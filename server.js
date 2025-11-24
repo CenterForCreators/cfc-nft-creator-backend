@@ -1,6 +1,6 @@
 // ===============================
 // CFC NFT CREATOR — BACKEND (PHASE 2)
-// server.js
+// FIXED FOR RENDER — better-sqlite3 VERSION
 // ===============================
 
 import express from "express";
@@ -8,8 +8,7 @@ import cors from "cors";
 import fileUpload from "express-fileupload";
 import axios from "axios";
 import FormData from "form-data";
-import sqlite3 from "sqlite3";
-import { open } from "sqlite";
+import Database from "better-sqlite3";
 import xrpl from "xrpl";
 import dotenv from "dotenv";
 
@@ -32,31 +31,24 @@ app.use(express.json());
 app.use(fileUpload());
 
 // -------------------------------
-//  SQLITE DATABASE
+//  SQLITE INITIALIZATION
 // -------------------------------
-let db;
+const db = new Database("./submissions.sqlite");
 
-async function initDB() {
-  db = await open({
-    filename: "./submissions.sqlite",
-    driver: sqlite3.Database
-  });
-
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS submissions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      creator_wallet TEXT,
-      name TEXT,
-      description TEXT,
-      image_cid TEXT,
-      metadata_cid TEXT,
-      batch_qty INTEGER,
-      status TEXT,        -- pending / approved / rejected
-      created_at TEXT
-    );
-  `);
-}
-initDB();
+// Create table if missing
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    creator_wallet TEXT,
+    name TEXT,
+    description TEXT,
+    image_cid TEXT,
+    metadata_cid TEXT,
+    batch_qty INTEGER,
+    status TEXT,       -- pending / approved / rejected / minted
+    created_at TEXT
+  )
+`).run();
 
 // -------------------------------
 //  ADMIN LOGIN
@@ -64,13 +56,10 @@ initDB();
 app.post("/api/admin/login", (req, res) => {
   const { password } = req.body;
 
-  if (!password) return res.json({ success: false });
-
-  if (password === ADMIN_PASSWORD) {
-    return res.json({ success: true });
+  if (!password || password !== ADMIN_PASSWORD) {
+    return res.json({ success: false });
   }
-
-  return res.json({ success: false });
+  res.json({ success: true });
 });
 
 // -------------------------------
@@ -83,7 +72,6 @@ app.post("/api/upload", async (req, res) => {
     }
 
     const file = req.files.file;
-
     const formData = new FormData();
     formData.append("file", file.data, file.name);
 
@@ -116,7 +104,7 @@ app.post("/api/upload", async (req, res) => {
 // -------------------------------
 //  SUBMIT NFT FOR APPROVAL
 // -------------------------------
-app.post("/api/submit", async (req, res) => {
+app.post("/api/submit", (req, res) => {
   try {
     const {
       wallet,
@@ -127,19 +115,21 @@ app.post("/api/submit", async (req, res) => {
       quantity
     } = req.body;
 
-    await db.run(
-      `INSERT INTO submissions (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        wallet,
-        name,
-        description,
-        imageCid,
-        metadataCid,
-        quantity,
-        "pending",
-        new Date().toISOString()
-      ]
+    const stmt = db.prepare(`
+      INSERT INTO submissions
+      (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      wallet,
+      name,
+      description,
+      imageCid,
+      metadataCid,
+      quantity,
+      "pending",
+      new Date().toISOString()
     );
 
     res.json({ submitted: true });
@@ -153,33 +143,33 @@ app.post("/api/submit", async (req, res) => {
 // -------------------------------
 //  ADMIN: GET ALL SUBMISSIONS
 // -------------------------------
-app.get("/api/admin/submissions", async (req, res) => {
+app.get("/api/admin/submissions", (req, res) => {
   const { password } = req.query;
-  if (password !== ADMIN_PASSWORD) return res.json({ error: "Not authorized" });
+  if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
 
-  const submissions = await db.all(`SELECT * FROM submissions ORDER BY id DESC`);
+  const submissions = db.prepare(`SELECT * FROM submissions ORDER BY id DESC`).all();
   res.json(submissions);
 });
 
 // -------------------------------
 //  ADMIN: APPROVE SUBMISSION
 // -------------------------------
-app.post("/api/admin/approve", async (req, res) => {
+app.post("/api/admin/approve", (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
 
-  await db.run(`UPDATE submissions SET status = 'approved' WHERE id = ?`, [id]);
+  db.prepare(`UPDATE submissions SET status = 'approved' WHERE id = ?`).run(id);
   res.json({ approved: true });
 });
 
 // -------------------------------
 //  ADMIN: REJECT SUBMISSION
 // -------------------------------
-app.post("/api/admin/reject", async (req, res) => {
+app.post("/api/admin/reject", (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
 
-  await db.run(`UPDATE submissions SET status = 'rejected' WHERE id = ?`, [id]);
+  db.prepare(`UPDATE submissions SET status = 'rejected' WHERE id = ?`).run(id);
   res.json({ rejected: true });
 });
 
@@ -192,8 +182,7 @@ app.post("/api/admin/mint", async (req, res) => {
   if (password !== ADMIN_PASSWORD)
     return res.json({ error: "Unauthorized" });
 
-  const sub = await db.get(`SELECT * FROM submissions WHERE id = ?`, [id]);
-
+  const sub = db.prepare(`SELECT * FROM submissions WHERE id = ?`).get(id);
   if (!sub) return res.json({ error: "Not found" });
 
   try {
@@ -211,7 +200,7 @@ app.post("/api/admin/mint", async (req, res) => {
     const resp = await client.submit(mintTx);
     await client.disconnect();
 
-    await db.run(`UPDATE submissions SET status = 'minted' WHERE id = ?`, [id]);
+    db.prepare(`UPDATE submissions SET status = 'minted' WHERE id = ?`).run(id);
 
     res.json({ minted: true, xrpl: resp });
 
@@ -227,4 +216,3 @@ app.post("/api/admin/mint", async (req, res) => {
 app.listen(PORT, () =>
   console.log(`CFC NFT Creator Backend running on port ${PORT}`)
 );
-
