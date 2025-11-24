@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CFC Admin Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+        padding: 20px;
+    }
+
+    .login-box, .admin-box {
+        max-width: 700px;
+        margin: auto;
+        background: #fff;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+        text-align: center;
+        color: #000;
+        margin-bottom: 20px;
+    }
+
+    label {
+        font-weight: bold;
+        margin-top: 15px;
+        display: block;
+    }
+
+    input {
+        width: 100%;
+        padding: 12px;
+        margin-top: 8px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+    }
+
+    button {
+        background: #000;
+        color: #fff;
+        width: 100%;
+        padding: 12px;
+        font-size: 16px;
+        border: none;
+        border-radius: 6px;
+        margin-top: 20px;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background: #333;
+    }
+
+    table {
+        width: 100%;
+        margin-top: 20px;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    th, td {
+        padding: 12px;
+        border-bottom: 1px solid #ddd;
+        font-size: 15px;
+    }
+
+    th {
+        background: #e5e5e5;
+        font-weight: bold;
+        text-align: left;
+    }
+
+    .status {
+        font-weight: bold;
+    }
+
+    .btn-small {
+        padding: 8px;
+        font-size: 14px;
+        margin-right: 8px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .approve {
+        background: #28a745;
+        color: #fff;
+    }
+
+    .reject {
+        background: #dc3545;
+        color: #fff;
+    }
+
+    .mint {
+        background: #0066ff;
+        color: #fff;
+    }
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginBox" class="login-box">
+    <h1>Admin Login</h1>
+
+    <label>Password</label>
+    <input type="password" id="adminPass" placeholder="Enter admin password">
+
+    <button onclick="adminLogin()">Login</button>
+
+    <div id="loginMsg"></div>
+</div>
+
+<!-- ADMIN SCREEN -->
+<div id="adminBox" class="admin-box" style="display:none;">
+    <h1>CFC Admin Dashboard</h1>
+
+    <h3>NFT Submissions</h3>
+
+    <table id="submissionsTable">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Wallet</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Qty</th>
+            <th>Actions</th>
+        </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<script>
+const BACKEND = "https://cfc-nft-creator-backend.onrender.com";
+let ADMIN_PASSWORD = "";
+
+// --------------------------
+// ADMIN LOGIN
+// --------------------------
+async function adminLogin() {
+    const pass = document.getElementById("adminPass").value;
+    ADMIN_PASSWORD = pass;
+
+    const res = await fetch(BACKEND + "/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pass })
+    });
+
+    const data = await res.json();
+
+    if (!data.success) {
+        document.getElementById("loginMsg").innerHTML =
+            "<p style='color:red;'>Incorrect password</p>";
+        return;
+    }
+
+    // Login success
+    document.getElementById("loginBox").style.display = "none";
+    document.getElementById("adminBox").style.display = "block";
+
+    loadSubmissions();
+}
+
+// --------------------------
+// LOAD SUBMISSIONS
+// --------------------------
+async function loadSubmissions() {
+    const res = await fetch(
+        BACKEND + "/api/admin/submissions?password=" + ADMIN_PASSWORD
+    );
+
+    const items = await res.json();
+
+    const tbody = document.querySelector("#submissionsTable tbody");
+    tbody.innerHTML = "";
+
+    items.forEach(sub => {
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+            <td>${sub.id}</td>
+            <td>${sub.creator_wallet}</td>
+            <td>${sub.name}</td>
+            <td class="status">${sub.status}</td>
+            <td>${sub.batch_qty}</td>
+            <td>
+                ${sub.status === "pending" ? `
+                    <button class="btn-small approve" onclick="approve(${sub.id})">Approve</button>
+                    <button class="btn-small reject" onclick="reject(${sub.id})">Reject</button>
+                ` : ""}
+
+                ${sub.status === "approved" ? `
+                    <button class="btn-small mint" onclick="mint(${sub.id})">Mint</button>
+                ` : ""}
+            </td>
+        `;
+
+        tbody.appendChild(row);
+    });
+}
+
+// --------------------------
+// APPROVE
+// --------------------------
+async function approve(id) {
+    await fetch(BACKEND + "/api/admin/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, password: ADMIN_PASSWORD })
+    });
+
+    loadSubmissions();
+}
+
+// --------------------------
+// REJECT
+// --------------------------
+async function reject(id) {
+    await fetch(BACKEND + "/api/admin/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, password: ADMIN_PASSWORD })
+    });
+
+    loadSubmissions();
+}
+
+// --------------------------
+// MINT
+// --------------------------
+async function mint(id) {
+    alert("Minting NFT… check the wallet used for signature.");
+
+    await fetch(BACKEND + "/api/admin/mint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, password: ADMIN_PASSWORD })
+    });
+
+    loadSubmissions();
+}
+</script>
+
+</body>
+</html>
