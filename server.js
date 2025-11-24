@@ -1,6 +1,7 @@
 // ===============================
-// CFC NFT CREATOR — BACKEND (PHASE 3)
-// FIXED FOR RENDER — better-sqlite3 VERSION + CORS ALLOW LIST
+// CFC NFT CREATOR — BACKEND (PHASE 4)
+// Wallet Connect + Payments Added
+// Secure For Render Deployment
 // ===============================
 
 import express from "express";
@@ -17,9 +18,15 @@ dotenv.config();
 // -------------------------------
 //  CONFIG
 // -------------------------------
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // "CFCBaby3!"
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; 
 const PINATA_API_KEY = process.env.PINATA_API_KEY;
 const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
+const XUMM_API_KEY = process.env.XUMM_API_KEY;
+const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
+
+// Wallet where ALL minting fees go  
+const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
+
 const PORT = process.env.PORT || 4000;
 
 // -------------------------------
@@ -27,7 +34,6 @@ const PORT = process.env.PORT || 4000;
 // -------------------------------
 const app = express();
 
-// *** CORS FIX — REQUIRED FOR FRONT-END TO CONNECT ***
 app.use(cors({
   origin: [
     "https://centerforcreators.com",
@@ -44,11 +50,10 @@ app.use(express.json());
 app.use(fileUpload());
 
 // -------------------------------
-//  SQLITE INITIALIZATION
+//  SQLITE SETUP
 // -------------------------------
 const db = new Database("./submissions.sqlite");
 
-// Create table if missing
 db.prepare(`
   CREATE TABLE IF NOT EXISTS submissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -58,21 +63,134 @@ db.prepare(`
     image_cid TEXT,
     metadata_cid TEXT,
     batch_qty INTEGER,
-    status TEXT,       -- pending / approved / rejected / minted
+    status TEXT,
     created_at TEXT
   )
 `).run();
+
+// -------------------------------
+//  UTILITY: CREATE XUMM PAYLOAD
+// -------------------------------
+async function createXummPayload(payload) {
+  const r = await axios.post(
+    "https://xumm.app/api/v1/platform/payload",
+    payload,
+    {
+      headers: {
+        "X-API-Key": XUMM_API_KEY,
+        "X-API-Secret": XUMM_API_SECRET,
+        "Content-Type": "application/json"
+      }
+    }
+  );
+
+  return {
+    uuid: r.data.uuid,
+    link: r.data.next.always
+  };
+}
+
+// -------------------------------
+//  WALLET CONNECT (SignIn)
+// -------------------------------
+app.post("/api/wallet-connect", async (req, res) => {
+  try {
+    const { uuid, link } = await createXummPayload({
+      txjson: { TransactionType: "SignIn" }
+    });
+
+    res.json({ uuid, link });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Wallet connect failed" });
+  }
+});
+
+// -------------------------------
+//  CHECK SIGN-IN (polling)
+// -------------------------------
+app.get("/api/check-signin/:uuid", async (req, res) => {
+  try {
+    const uuid = req.params.uuid;
+
+    const r = await axios.get(
+      `https://xumm.app/api/v1/platform/payload/${uuid}`,
+      {
+        headers: { "X-API-Key": XUMM_API_KEY }
+      }
+    );
+
+    if (!r.data.response) return res.json({ signed: false });
+
+    if (r.data.signed === true) {
+      return res.json({
+        signed: true,
+        account: r.data.response.account
+      });
+    }
+
+    res.json({ signed: false });
+
+  } catch (err) {
+    res.json({ signed: false });
+  }
+});
+
+// -------------------------------
+//  PAY XRP (Mint Fee)
+// -------------------------------
+app.post("/api/pay-xrp", async (req, res) => {
+  try {
+    const drops = xrpl.xrpToDrops("5");
+
+    const { uuid, link } = await createXummPayload({
+      txjson: {
+        TransactionType: "Payment",
+        Destination: PAYMENT_DEST,
+        Amount: drops
+      }
+    });
+
+    res.json({ uuid, link });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "XRP payment failed" });
+  }
+});
+
+// -------------------------------
+//  PAY RLUSD (Mint Fee)
+// -------------------------------
+app.post("/api/pay-rlusd", async (req, res) => {
+  try {
+    const { uuid, link } = await createXummPayload({
+      txjson: {
+        TransactionType: "Payment",
+        Destination: PAYMENT_DEST,
+        Amount: {
+          currency: "524C555344000000000000000000000000000000",
+          issuer: PAYMENT_DEST,
+          value: "12.50" // Updated live value if needed
+        }
+      }
+    });
+
+    res.json({ uuid, link });
+
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "RLUSD payment failed" });
+  }
+});
 
 // -------------------------------
 //  ADMIN LOGIN
 // -------------------------------
 app.post("/api/admin/login", (req, res) => {
   const { password } = req.body;
-
-  if (!password || password !== ADMIN_PASSWORD) {
-    return res.json({ success: false });
-  }
-  res.json({ success: true });
+  res.json({ success: password === ADMIN_PASSWORD });
 });
 
 // -------------------------------
@@ -80,9 +198,8 @@ app.post("/api/admin/login", (req, res) => {
 // -------------------------------
 app.post("/api/upload", async (req, res) => {
   try {
-    if (!req.files || !req.files.file) {
-      return res.status(400).json({ error: "No file received." });
-    }
+    if (!req.files || !req.files.file)
+      return res.status(400).json({ error: "No file received" });
 
     const file = req.files.file;
     const formData = new FormData();
@@ -102,15 +219,11 @@ app.post("/api/upload", async (req, res) => {
     );
 
     const cid = upload.data.IpfsHash;
-
-    res.json({
-      cid,
-      uri: `ipfs://${cid}`
-    });
+    res.json({ cid, uri: `ipfs://${cid}` });
 
   } catch (err) {
     console.log(err);
-    res.status(500).json({ error: "Upload failed." });
+    res.status(500).json({ error: "Upload failed" });
   }
 });
 
@@ -128,20 +241,17 @@ app.post("/api/submit", (req, res) => {
       quantity
     } = req.body;
 
-    const stmt = db.prepare(`
+    db.prepare(`
       INSERT INTO submissions
       (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(
       wallet,
       name,
       description,
       imageCid,
       metadataCid,
       quantity,
-      "pending",
       new Date().toISOString()
     );
 
@@ -149,45 +259,49 @@ app.post("/api/submit", (req, res) => {
 
   } catch (err) {
     console.log(err);
-    res.status(500).json({ error: "Submission failed." });
+    res.status(500).json({ error: "Submission failed" });
   }
 });
 
 // -------------------------------
-//  ADMIN: GET ALL SUBMISSIONS
+//  ADMIN GET SUBMISSIONS
 // -------------------------------
 app.get("/api/admin/submissions", (req, res) => {
-  const { password } = req.query;
-  if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
+  if (req.query.password !== ADMIN_PASSWORD)
+    return res.json({ error: "Unauthorized" });
 
-  const submissions = db.prepare(`SELECT * FROM submissions ORDER BY id DESC`).all();
-  res.json(submissions);
+  const items = db.prepare(`SELECT * FROM submissions ORDER BY id DESC`).all();
+  res.json(items);
 });
 
 // -------------------------------
-//  ADMIN: APPROVE SUBMISSION
+//  ADMIN APPROVE
 // -------------------------------
 app.post("/api/admin/approve", (req, res) => {
-  const { id, password } = req.body;
-  if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
+  if (req.body.password !== ADMIN_PASSWORD)
+    return res.json({ error: "Unauthorized" });
 
-  db.prepare(`UPDATE submissions SET status = 'approved' WHERE id = ?`).run(id);
+  db.prepare(`UPDATE submissions SET status='approved' WHERE id=?`)
+    .run(req.body.id);
+
   res.json({ approved: true });
 });
 
 // -------------------------------
-//  ADMIN: REJECT SUBMISSION
+//  ADMIN REJECT
 // -------------------------------
 app.post("/api/admin/reject", (req, res) => {
-  const { id, password } = req.body;
-  if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
+  if (req.body.password !== ADMIN_PASSWORD)
+    return res.json({ error: "Unauthorized" });
 
-  db.prepare(`UPDATE submissions SET status = 'rejected' WHERE id = ?`).run(id);
+  db.prepare(`UPDATE submissions SET status='rejected' WHERE id=?`)
+    .run(req.body.id);
+
   res.json({ rejected: true });
 });
 
 // -------------------------------
-//  ADMIN: MINT NFT (XLS-20)
+//  ADMIN MINT (XLS-20)
 // -------------------------------
 app.post("/api/admin/mint", async (req, res) => {
   const { id, password } = req.body;
@@ -195,7 +309,7 @@ app.post("/api/admin/mint", async (req, res) => {
   if (password !== ADMIN_PASSWORD)
     return res.json({ error: "Unauthorized" });
 
-  const sub = db.prepare(`SELECT * FROM submissions WHERE id = ?`).get(id);
+  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
   if (!sub) return res.json({ error: "Not found" });
 
   try {
@@ -210,22 +324,22 @@ app.post("/api/admin/mint", async (req, res) => {
       NFTokenTaxon: 1
     };
 
-    const resp = await client.submit(mintTx);
+    const result = await client.submit(mintTx);
     await client.disconnect();
 
-    db.prepare(`UPDATE submissions SET status = 'minted' WHERE id = ?`).run(id);
+    db.prepare(`UPDATE submissions SET status='minted' WHERE id=?`).run(id);
 
-    res.json({ minted: true, xrpl: resp });
+    res.json({ minted: true, xrpl: result });
 
   } catch (err) {
     console.log(err);
-    res.status(500).json({ minted: false, error: "Minting failed." });
+    res.status(500).json({ error: "Minting failed" });
   }
 });
 
 // -------------------------------
 //  START SERVER
 // -------------------------------
-app.listen(PORT, () =>
-  console.log(`CFC NFT Creator Backend running on port ${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`CFC NFT Creator Backend running on port ${PORT}`);
+});
