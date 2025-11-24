@@ -1,6 +1,6 @@
 // ===============================
-// CFC NFT CREATOR — BACKEND (PHASE 2)
-// FIXED FOR RENDER — better-sqlite3 VERSION
+// CFC NFT CREATOR — BACKEND (PHASE 3)
+// FIXED FOR RENDER — better-sqlite3 VERSION + CORS ALLOW LIST
 // ===============================
 
 import express from "express";
@@ -26,7 +26,20 @@ const PORT = process.env.PORT || 4000;
 //  APP INIT
 // -------------------------------
 const app = express();
-app.use(cors());
+
+// *** CORS FIX — REQUIRED FOR FRONT-END TO CONNECT ***
+app.use(cors({
+  origin: [
+    "https://centerforcreators.com",
+    "https://centerforcreators.com/nft-marketplace",
+    "https://centerforcreators.com/nft-creator",
+    "https://centerforcreators.github.io",
+    "https://centerforcreators.github.io/cfc-nft-creator-frontend"
+  ],
+  methods: ["GET", "POST"],
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(fileUpload());
 
