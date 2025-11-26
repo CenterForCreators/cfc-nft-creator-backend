@@ -41,6 +41,7 @@ app.use(cors({
     "https://centerforcreators.com/nft-creator",
     "https://centerforcreators.github.io",
     "https://centerforcreators.github.io/cfc-nft-creator-frontend"
+    "https://centerforcreators.com/nft-creator/admin"
   ],
   methods: ["GET", "POST"],
   credentials: true
