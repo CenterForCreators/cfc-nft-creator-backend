@@ -174,7 +174,6 @@ app.post("/api/pay-rlusd", async (req, res) => {
         issuer: PAYMENT_DEST,
         value: "12.50"
       }
-    }
   );
 
     res.json({ uuid, link });
