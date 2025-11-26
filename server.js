@@ -18,7 +18,7 @@ dotenv.config();
 // -------------------------------
 //  CONFIG
 // -------------------------------
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; 
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const PINATA_API_KEY = process.env.PINATA_API_KEY;
 const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
 const XUMM_API_KEY = process.env.XUMM_API_KEY;
@@ -167,15 +167,15 @@ app.post("/api/pay-rlusd", async (req, res) => {
   try {
     const { uuid, link } = await createXummPayload({
       txjson: {
-        TransactionType: "Payment",
-        Destination: PAYMENT_DEST,
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: PAYMENT_DEST,
-          value: "12.50" // Updated live value if needed
-        }
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: {
+        currency: "524C555344000000000000000000000000000000",
+        issuer: PAYMENT_DEST,
+        value: "12.50"
       }
-    });
+    }
+  );
 
     res.json({ uuid, link });
 
@@ -301,7 +301,7 @@ app.post("/api/admin/reject", (req, res) => {
 });
 
 // -------------------------------
-//  ADMIN MINT (XLS-20)
+//  ADMIN MINT (XLS-20) — FIXED
 // -------------------------------
 app.post("/api/admin/mint", async (req, res) => {
   const { id, password } = req.body;
@@ -316,24 +316,37 @@ app.post("/api/admin/mint", async (req, res) => {
     const client = new xrpl.Client("wss://s1.ripple.com");
     await client.connect();
 
+    // Fetch account sequence
+    const acct = await client.request({
+      command: "account_info",
+      account: sub.creator_wallet,
+      ledger_index: "current"
+    });
+
+    // Build mint transaction
     const mintTx = {
       TransactionType: "NFTokenMint",
       Account: sub.creator_wallet,
       URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
       Flags: 8,
-      NFTokenTaxon: 1
+      NFTokenTaxon: 1,
+      Sequence: acct.result.account_data.Sequence
     };
 
-    const result = await client.submit(mintTx);
+    // XUMM signing payload
+    const { uuid, link } = await createXummPayload({ txjson: mintTx });
+
     await client.disconnect();
 
-    db.prepare(`UPDATE submissions SET status='minted' WHERE id=?`).run(id);
-
-    res.json({ minted: true, xrpl: result });
+    res.json({
+      mint_ready: true,
+      sign_url: link,
+      uuid
+    });
 
   } catch (err) {
     console.log(err);
-    res.status(500).json({ error: "Minting failed" });
+    res.status(500).json({ error: "Minting failed", details: err.message });
   }
 });
 
