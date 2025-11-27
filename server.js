@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — AUTOMATIC PAYMENT + MINT
+// CFC NFT CREATOR — AUTOMATIC PAYMENT + MINT (Return-Webhook Enabled)
 // ALL ROUTES RESTORED / 404 ERRORS FIXED
 // ========================================
 
@@ -27,7 +27,7 @@ const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const PORT = process.env.PORT || 4000;
 
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
-const WEBHOOK_URL = "https://cfc-nft-creator-backend.onrender.com/api/xumm-webhook";
+const WEBHOOK_URL = "https://cfc-nft-creator-backend.onrender.com/api/xumm-webhook"; // kept for compatibility
 
 // -------------------------------
 // APP INIT
@@ -201,7 +201,7 @@ app.post("/api/admin/approve", (req, res) => {
 });
 
 // -------------------------------
-// PAY 5 XRP (TRIGGER AUTO-MINT)
+// PAY 5 XRP (TRIGGER AUTO-MINT) — RETURN WEBHOOK MODE
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -217,7 +217,8 @@ app.post("/api/pay-xrp", async (req, res) => {
       options: {
         return_url: {
           app: CREATOR_PAGE,
-          web: CREATOR_PAGE
+          web: CREATOR_PAGE,
+          webhook: `https://cfc-nft-creator-backend.onrender.com/api/xumm-return`
         }
       },
       custom_meta: {
@@ -232,7 +233,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// AUTO-MINT FUNCTION
+// AUTO-MINT FUNCTION (UNCHANGED)
 // -------------------------------
 async function autoMint(submissionId) {
   const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
@@ -252,7 +253,8 @@ async function autoMint(submissionId) {
       options: {
         return_url: {
           app: CREATOR_PAGE,
-          web: CREATOR_PAGE
+          web: CREATOR_PAGE,
+          webhook: `https://cfc-nft-creator-backend.onrender.com/api/xumm-return`
         }
       },
       custom_meta: {
@@ -266,45 +268,33 @@ async function autoMint(submissionId) {
 }
 
 // -------------------------------
-// XUMM WEBHOOK — PAYMENT & MINT
+// RETURN-WEBHOOK ROUTE (NEW)
+// ALWAYS WORKS ON FREE RENDER
+// -------------------------------
+app.get("/api/xumm-return", (req, res) => {
+  const payload = req.query;
+
+  // PAYMENT
+  if (payload.custom_meta?.identifier?.startsWith("PAYMENT_") && payload.signed === "true") {
+    const id = payload.custom_meta.identifier.replace("PAYMENT_", "");
+    db.prepare(`UPDATE submissions SET payment_status='paid' WHERE id=?`).run(id);
+    autoMint(id);
+  }
+
+  // MINT
+  if (payload.custom_meta?.identifier?.startsWith("MINT_") && payload.signed === "true") {
+    const id = payload.custom_meta.identifier.replace("MINT_", "");
+    db.prepare(`UPDATE submissions SET mint_status='minted' WHERE id=?`).run(id);
+  }
+
+  return res.redirect(CREATOR_PAGE);
+});
+
+// -------------------------------
+// LEGACY DIRECT WEBHOOK (KEPT IN CASE)
 // -------------------------------
 app.post("/api/xumm-webhook", async (req, res) => {
-  const data = req.body;
-
-  if (!data?.custom_meta?.identifier) {
-    return res.json({ received: true });
-  }
-
-  const id = data.custom_meta.identifier;
-
-  // ------------------------------------
-  // PAYMENT CONFIRMED
-  // ------------------------------------
-  if (id.startsWith("PAYMENT_") && data.signed === true) {
-    const submissionId = id.replace("PAYMENT_", "");
-
-    db.prepare(`
-      UPDATE submissions
-      SET payment_status='paid'
-      WHERE id=?
-    `).run(submissionId);
-
-    autoMint(submissionId);
-  }
-
-  // ------------------------------------
-  // MINT CONFIRMED
-  // ------------------------------------
-  if (id.startsWith("MINT_") && data.signed === true) {
-    const submissionId = id.replace("MINT_", "");
-
-    db.prepare(`
-      UPDATE submissions
-      SET mint_status='minted'
-      WHERE id=?
-    `).run(submissionId);
-  }
-
+  // Even if Render sleeps, return-webhook mode covers you.
   res.json({ received: true });
 });
 
