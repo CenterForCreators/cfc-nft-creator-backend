@@ -1,4 +1,3 @@
-
 // ===============================
 // CFC NFT CREATOR — BACKEND (PHASE 4)
 // Wallet Connect + Payments Added
@@ -41,8 +40,8 @@ app.use(cors({
     "https://centerforcreators.com/nft-marketplace",
     "https://centerforcreators.com/nft-creator",
     "https://centerforcreators.github.io",
-    "https://centerforcreators.github.io/cfc-nft-creator-frontend"
-    "https://centerforcreators.com/nft-creator/admin"
+    "https://centerforcreators.github.io/cfc-nft-creator-frontend",
+    "https://centerforcreators.com/nft-creator/admin"   // ✔ FIXED: missing comma before this line
   ],
   methods: ["GET", "POST"],
   credentials: true
@@ -169,14 +168,15 @@ app.post("/api/pay-rlusd", async (req, res) => {
   try {
     const { uuid, link } = await createXummPayload({
       txjson: {
-      TransactionType: "Payment",
-      Destination: PAYMENT_DEST,
-      Amount: {
-        currency: "524C555344000000000000000000000000000000",
-        issuer: PAYMENT_DEST,
-        value: "12.50"
+        TransactionType: "Payment",
+        Destination: PAYMENT_DEST,
+        Amount: {
+          currency: "524C555344000000000000000000000000000000",
+          issuer: PAYMENT_DEST,
+          value: "12.50"
+        }
       }
-  );
+    });  // ✔ FIXED BAD BRACKET
 
     res.json({ uuid, link });
 
@@ -302,7 +302,7 @@ app.post("/api/admin/reject", (req, res) => {
 });
 
 // -------------------------------
-//  ADMIN MINT (XLS-20) — FIXED
+//  ADMIN MINT (XLS-20)
 // -------------------------------
 app.post("/api/admin/mint", async (req, res) => {
   const { id, password } = req.body;
@@ -330,8 +330,8 @@ app.post("/api/admin/mint", async (req, res) => {
       Account: sub.creator_wallet,
       URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
       Flags: 8,
-      NFTokenTaxon: 1,
-      Sequence: acct.result.account_data.Sequence
+      NFTokenTaxon: 1
+      // ✔ FIXED malformed line (removed erroneous Sequence line)
     };
 
     // XUMM signing payload
