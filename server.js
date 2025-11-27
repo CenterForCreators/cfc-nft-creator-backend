@@ -1,7 +1,6 @@
 // ===============================
-// CFC NFT CREATOR — BACKEND (PHASE 4)
-// Wallet Connect + Payments Added
-// Secure For Render Deployment
+// CFC NFT CREATOR — BACKEND (Mint Option A)
+// Server signs the mint (no Xaman popup for mint)
 // ===============================
 
 import express from "express";
@@ -24,8 +23,11 @@ const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
 const XUMM_API_KEY = process.env.XUMM_API_KEY;
 const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
-// Wallet where ALL minting fees go  
-const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
+const MINTER_WALLET = process.env.MINTER_WALLET;   // Your main wallet
+const MINTER_SEED   = process.env.MINTER_SEED;     // Your SECRET SEED
+
+// Wallet receiving minting fees
+const PAYMENT_DEST = MINTER_WALLET;
 
 const PORT = process.env.PORT || 4000;
 
@@ -39,9 +41,9 @@ app.use(cors({
     "https://centerforcreators.com",
     "https://centerforcreators.com/nft-marketplace",
     "https://centerforcreators.com/nft-creator",
+    "https://centerforcreators.com/nft-creator/admin",
     "https://centerforcreators.github.io",
     "https://centerforcreators.github.io/cfc-nft-creator-frontend"
-    "https://centerforcreators.com/nft-creator/admin"
   ],
   methods: ["GET", "POST"],
   credentials: true
@@ -92,7 +94,7 @@ async function createXummPayload(payload) {
 }
 
 // -------------------------------
-//  WALLET CONNECT (SignIn)
+//  WALLET CONNECT
 // -------------------------------
 app.post("/api/wallet-connect", async (req, res) => {
   try {
@@ -109,7 +111,7 @@ app.post("/api/wallet-connect", async (req, res) => {
 });
 
 // -------------------------------
-//  CHECK SIGN-IN (polling)
+//  CHECK SIGN-IN
 // -------------------------------
 app.get("/api/check-signin/:uuid", async (req, res) => {
   try {
@@ -168,14 +170,15 @@ app.post("/api/pay-rlusd", async (req, res) => {
   try {
     const { uuid, link } = await createXummPayload({
       txjson: {
-      TransactionType: "Payment",
-      Destination: PAYMENT_DEST,
-      Amount: {
-        currency: "524C555344000000000000000000000000000000",
-        issuer: PAYMENT_DEST,
-        value: "12.50"
+        TransactionType: "Payment",
+        Destination: PAYMENT_DEST,
+        Amount: {
+          currency: "524C555344000000000000000000000000000000",
+          issuer: PAYMENT_DEST,
+          value: "12.50"
+        }
       }
-  );
+    });
 
     res.json({ uuid, link });
 
@@ -183,14 +186,6 @@ app.post("/api/pay-rlusd", async (req, res) => {
     console.log(err);
     res.status(500).json({ error: "RLUSD payment failed" });
   }
-});
-
-// -------------------------------
-//  ADMIN LOGIN
-// -------------------------------
-app.post("/api/admin/login", (req, res) => {
-  const { password } = req.body;
-  res.json({ success: password === ADMIN_PASSWORD });
 });
 
 // -------------------------------
@@ -301,7 +296,7 @@ app.post("/api/admin/reject", (req, res) => {
 });
 
 // -------------------------------
-//  ADMIN MINT (XLS-20) — FIXED
+//  ADMIN MINT — SERVER SIGNS (OPTION A)
 // -------------------------------
 app.post("/api/admin/mint", async (req, res) => {
   const { id, password } = req.body;
@@ -313,36 +308,28 @@ app.post("/api/admin/mint", async (req, res) => {
   if (!sub) return res.json({ error: "Not found" });
 
   try {
+    const wallet = xrpl.Wallet.fromSeed(MINTER_SEED);
+
     const client = new xrpl.Client("wss://s1.ripple.com");
     await client.connect();
 
-    // Fetch account sequence
-    const acct = await client.request({
-      command: "account_info",
-      account: sub.creator_wallet,
-      ledger_index: "current"
-    });
-
-    // Build mint transaction
     const mintTx = {
       TransactionType: "NFTokenMint",
-      Account: sub.creator_wallet,
+      Account: wallet.classicAddress,
       URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
       Flags: 8,
-      NFTokenTaxon: 1,
-      Sequence: acct.result.account_data.Sequence
+      NFTokenTaxon: 1
     };
 
-    // XUMM signing payload
-    const { uuid, link } = await createXummPayload({ txjson: mintTx });
+    const prepared = await client.autofill(mintTx);
+    const signed = wallet.sign(prepared);
+    const tx = await client.submitAndWait(signed.tx_blob);
 
     await client.disconnect();
 
-    res.json({
-      mint_ready: true,
-      sign_url: link,
-      uuid
-    });
+    db.prepare(`UPDATE submissions SET status='minted' WHERE id=?`).run(id);
+
+    res.json({ minted: true, hash: tx.result.hash });
 
   } catch (err) {
     console.log(err);
