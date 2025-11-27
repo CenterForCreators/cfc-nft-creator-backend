@@ -1,8 +1,7 @@
-// ===============================
-// CFC NFT CREATOR — BACKEND (PHASE 4)
-// Wallet Connect + Payments Added
-// Secure For Render Deployment
-// ===============================
+// ========================================
+// CFC NFT CREATOR — AUTOMATED MINT VERSION
+// Payment → Auto Mint → Auto Redirect
+// ========================================
 
 import express from "express";
 import cors from "cors";
@@ -16,7 +15,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // -------------------------------
-//  CONFIG
+// CONFIG
 // -------------------------------
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const PINATA_API_KEY = process.env.PINATA_API_KEY;
@@ -24,34 +23,39 @@ const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
 const XUMM_API_KEY = process.env.XUMM_API_KEY;
 const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
-// Wallet where ALL minting fees go  
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
-
 const PORT = process.env.PORT || 4000;
 
+const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
+
 // -------------------------------
-//  APP INIT
+// XUMM CALLBACK URL
+// MUST MATCH YOUR XUMM APP SETTINGS
+// -------------------------------
+const WEBHOOK_URL = `https://cfc-nft-creator-backend.onrender.com/api/xumm-webhook`;
+
+// -------------------------------
+// APP INIT
 // -------------------------------
 const app = express();
+app.use(express.json());
+app.use(fileUpload());
 
 app.use(cors({
   origin: [
     "https://centerforcreators.com",
-    "https://centerforcreators.com/nft-marketplace",
     "https://centerforcreators.com/nft-creator",
+    "https://centerforcreators.com/nft-marketplace",
+    "https://centerforcreators.com/nft-creator/admin",
     "https://centerforcreators.github.io",
-    "https://centerforcreators.github.io/cfc-nft-creator-frontend",
-    "https://centerforcreators.com/nft-creator/admin"   // ✔ FIXED: missing comma before this line
+    "https://centerforcreators.github.io/cfc-nft-creator-frontend"
   ],
   methods: ["GET", "POST"],
   credentials: true
 }));
 
-app.use(express.json());
-app.use(fileUpload());
-
 // -------------------------------
-//  SQLITE SETUP
+// SQLITE SETUP
 // -------------------------------
 const db = new Database("./submissions.sqlite");
 
@@ -65,12 +69,14 @@ db.prepare(`
     metadata_cid TEXT,
     batch_qty INTEGER,
     status TEXT,
+    payment_status TEXT DEFAULT 'unpaid',
+    mint_status TEXT DEFAULT 'pending',
     created_at TEXT
   )
 `).run();
 
 // -------------------------------
-//  UTILITY: CREATE XUMM PAYLOAD
+// UTILITY: XUMM PAYLOAD
 // -------------------------------
 async function createXummPayload(payload) {
   const r = await axios.post(
@@ -92,7 +98,7 @@ async function createXummPayload(payload) {
 }
 
 // -------------------------------
-//  WALLET CONNECT (SignIn)
+// WALLET CONNECT
 // -------------------------------
 app.post("/api/wallet-connect", async (req, res) => {
   try {
@@ -101,135 +107,49 @@ app.post("/api/wallet-connect", async (req, res) => {
     });
 
     res.json({ uuid, link });
-
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: "Wallet connect failed" });
   }
 });
 
 // -------------------------------
-//  CHECK SIGN-IN (polling)
-// -------------------------------
-app.get("/api/check-signin/:uuid", async (req, res) => {
-  try {
-    const uuid = req.params.uuid;
-
-    const r = await axios.get(
-      `https://xumm.app/api/v1/platform/payload/${uuid}`,
-      {
-        headers: { "X-API-Key": XUMM_API_KEY }
-      }
-    );
-
-    if (!r.data.response) return res.json({ signed: false });
-
-    if (r.data.signed === true) {
-      return res.json({
-        signed: true,
-        account: r.data.response.account
-      });
-    }
-
-    res.json({ signed: false });
-
-  } catch (err) {
-    res.json({ signed: false });
-  }
-});
-
-// -------------------------------
-//  PAY XRP (Mint Fee)
+// PAY 5 XRP → AUTOMATICALLY MINT
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
     const drops = xrpl.xrpToDrops("5");
+    const { submissionId } = req.body;
 
+    if (!submissionId) {
+      return res.json({ error: "Missing submissionId" });
+    }
+
+    // Create payment payload
     const { uuid, link } = await createXummPayload({
       txjson: {
         TransactionType: "Payment",
         Destination: PAYMENT_DEST,
         Amount: drops
+      },
+      options: {
+        return_url: {
+          app: CREATOR_PAGE,
+          web: CREATOR_PAGE
+        }
+      },
+      custom_meta: {
+        identifier: `PAYMENT_${submissionId}`
       }
     });
 
     res.json({ uuid, link });
-
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "XRP payment failed" });
+    res.status(500).json({ error: "Payment failed" });
   }
 });
 
 // -------------------------------
-//  PAY RLUSD (Mint Fee)
-// -------------------------------
-app.post("/api/pay-rlusd", async (req, res) => {
-  try {
-    const { uuid, link } = await createXummPayload({
-      txjson: {
-        TransactionType: "Payment",
-        Destination: PAYMENT_DEST,
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: PAYMENT_DEST,
-          value: "12.50"
-        }
-      }
-    });  // ✔ FIXED BAD BRACKET
-
-    res.json({ uuid, link });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "RLUSD payment failed" });
-  }
-});
-
-// -------------------------------
-//  ADMIN LOGIN
-// -------------------------------
-app.post("/api/admin/login", (req, res) => {
-  const { password } = req.body;
-  res.json({ success: password === ADMIN_PASSWORD });
-});
-
-// -------------------------------
-//  UPLOAD FILE TO PINATA
-// -------------------------------
-app.post("/api/upload", async (req, res) => {
-  try {
-    if (!req.files || !req.files.file)
-      return res.status(400).json({ error: "No file received" });
-
-    const file = req.files.file;
-    const formData = new FormData();
-    formData.append("file", file.data, file.name);
-
-    const upload = await axios.post(
-      "https://api.pinata.cloud/pinning/pinFileToIPFS",
-      formData,
-      {
-        maxBodyLength: "Infinity",
-        headers: {
-          ...formData.getHeaders(),
-          pinata_api_key: PINATA_API_KEY,
-          pinata_secret_api_key: PINATA_API_SECRET,
-        }
-      }
-    );
-
-    const cid = upload.data.IpfsHash;
-    res.json({ cid, uri: `ipfs://${cid}` });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Upload failed" });
-  }
-});
-
-// -------------------------------
-//  SUBMIT NFT FOR APPROVAL
+// SUBMIT NFT
 // -------------------------------
 app.post("/api/submit", (req, res) => {
   try {
@@ -242,10 +162,10 @@ app.post("/api/submit", (req, res) => {
       quantity
     } = req.body;
 
-    db.prepare(`
+    const result = db.prepare(`
       INSERT INTO submissions
-      (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, payment_status, mint_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', 'unpaid', 'pending', ?)
     `).run(
       wallet,
       name,
@@ -256,16 +176,14 @@ app.post("/api/submit", (req, res) => {
       new Date().toISOString()
     );
 
-    res.json({ submitted: true });
-
+    res.json({ submitted: true, id: result.lastInsertRowid });
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: "Submission failed" });
   }
 });
 
 // -------------------------------
-//  ADMIN GET SUBMISSIONS
+// ADMIN GET SUBMISSIONS
 // -------------------------------
 app.get("/api/admin/submissions", (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
@@ -276,7 +194,7 @@ app.get("/api/admin/submissions", (req, res) => {
 });
 
 // -------------------------------
-//  ADMIN APPROVE
+// ADMIN APPROVE (ONLY STEP FOR ADMIN)
 // -------------------------------
 app.post("/api/admin/approve", (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD)
@@ -289,71 +207,103 @@ app.post("/api/admin/approve", (req, res) => {
 });
 
 // -------------------------------
-//  ADMIN REJECT
+// XUMM WEBHOOK (PAYMENT + MINT AUTOMATION)
 // -------------------------------
-app.post("/api/admin/reject", (req, res) => {
-  if (req.body.password !== ADMIN_PASSWORD)
-    return res.json({ error: "Unauthorized" });
+app.post("/api/xumm-webhook", async (req, res) => {
+  const data = req.body;
 
-  db.prepare(`UPDATE submissions SET status='rejected' WHERE id=?`)
-    .run(req.body.id);
+  if (!data || !data.custom_meta || !data.custom_meta.identifier) {
+    return res.json({ received: true });
+  }
 
-  res.json({ rejected: true });
+  const identifier = data.custom_meta.identifier;
+
+  // -----------------------------------
+  // PAYMENT DETECTED
+  // -----------------------------------
+  if (identifier.startsWith("PAYMENT_") && data.signed === true) {
+    const submissionId = identifier.replace("PAYMENT_", "");
+
+    // Mark as paid
+    db.prepare(`
+      UPDATE submissions
+      SET payment_status='paid'
+      WHERE id=?
+    `).run(submissionId);
+
+    // Auto-mint
+    autoMint(submissionId);
+  }
+
+  res.json({ received: true });
 });
 
 // -------------------------------
-//  ADMIN MINT (XLS-20)
+// AUTOMATIC MINT FUNCTION
 // -------------------------------
-app.post("/api/admin/mint", async (req, res) => {
-  const { id, password } = req.body;
+async function autoMint(submissionId) {
+  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
 
-  if (password !== ADMIN_PASSWORD)
-    return res.json({ error: "Unauthorized" });
-
-  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
-  if (!sub) return res.json({ error: "Not found" });
+  if (!sub) return;
 
   try {
-    const client = new xrpl.Client("wss://s1.ripple.com");
-    await client.connect();
-
-    // Fetch account sequence
-    const acct = await client.request({
-      command: "account_info",
-      account: sub.creator_wallet,
-      ledger_index: "current"
-    });
-
-    // Build mint transaction
     const mintTx = {
       TransactionType: "NFTokenMint",
       Account: sub.creator_wallet,
       URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
       Flags: 8,
       NFTokenTaxon: 1
-      // ✔ FIXED malformed line (removed erroneous Sequence line)
     };
 
-    // XUMM signing payload
-    const { uuid, link } = await createXummPayload({ txjson: mintTx });
-
-    await client.disconnect();
-
-    res.json({
-      mint_ready: true,
-      sign_url: link,
-      uuid
+    // Create mint payload → user signs
+    const { uuid, link } = await createXummPayload({
+      txjson: mintTx,
+      options: {
+        return_url: {
+          app: CREATOR_PAGE,
+          web: CREATOR_PAGE
+        }
+      },
+      custom_meta: {
+        identifier: `MINT_${submissionId}`
+      }
     });
 
+    // Wait for XUMM to handle it (user signs)
+    return link;
+
   } catch (err) {
-    console.log(err);
-    res.status(500).json({ error: "Minting failed", details: err.message });
+    console.log("Mint error:", err.message);
   }
+}
+
+// -------------------------------
+// XUMM WEBHOOK HANDLES MINT TOO
+// -------------------------------
+app.post("/api/xumm-webhook", (req, res) => {
+  const data = req.body;
+
+  if (!data || !data.custom_meta) return res.json({ received: true });
+
+  const id = data.custom_meta.identifier;
+
+  // MINT SUCCESS
+  if (id.startsWith("MINT_") && data.signed === true) {
+    const submissionId = id.replace("MINT_", "");
+
+    db.prepare(`
+      UPDATE submissions
+      SET mint_status='minted'
+      WHERE id=?
+    `).run(submissionId);
+  }
+
+  res.json({ received: true });
 });
 
 // -------------------------------
-//  START SERVER
+// START SERVER
 // -------------------------------
 app.listen(PORT, () => {
-  console.log(`CFC NFT Creator Backend running on port ${PORT}`);
+  console.log("CFC NFT Creator Backend running on port", PORT);
 });
