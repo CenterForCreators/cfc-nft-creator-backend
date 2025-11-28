@@ -1,5 +1,6 @@
 // ========================================
-// CFC NFT CREATOR — AUTOMATIC PAYMENT + MINT + REVERSE PROXY IFRAME FIX
+// CFC NFT CREATOR — AUTOMATIC PAYMENT + MINT
+// Using Xumm RETURN URL {cid} (no custom webhook hacks)
 // ========================================
 
 import express from "express";
@@ -10,8 +11,6 @@ import FormData from "form-data";
 import Database from "better-sqlite3";
 import xrpl from "xrpl";
 import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
 
 dotenv.config();
 
@@ -27,13 +26,12 @@ const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const PORT = process.env.PORT || 4000;
 
+// Your public pages
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
 
-// -------------------------------
-// PATH HELPERS
-// -------------------------------
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Your backend base (Render URL)
+const BACKEND_BASE = "https://cfc-nft-creator-backend.onrender.com";
+const RETURN_HANDLER = `${BACKEND_BASE}/api/xumm-return`;
 
 // -------------------------------
 // APP INIT
@@ -51,7 +49,6 @@ app.use(
       "https://centerforcreators.com/nft-creator/admin",
       "https://centerforcreators.github.io",
       "https://centerforcreators.github.io/cfc-nft-creator-frontend",
-      "https://cfc-nft-creator-backend.onrender.com"
     ],
     methods: ["GET", "POST"],
     credentials: true,
@@ -126,7 +123,15 @@ app.post("/api/submit", (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'unpaid', 'pending', ?)
     `
       )
-      .run(wallet, name, description, imageCid, metadataCid, quantity, new Date().toISOString());
+      .run(
+        wallet,
+        name,
+        description,
+        imageCid,
+        metadataCid,
+        quantity,
+        new Date().toISOString()
+      );
 
     res.json({ submitted: true, id: result.lastInsertRowid });
   } catch {
@@ -163,19 +168,19 @@ app.post("/api/upload", async (req, res) => {
       cid: upload.data.IpfsHash,
       uri: "ipfs://" + upload.data.IpfsHash,
     });
-  } catch {
+  } catch (err) {
     res.status(500).json({ error: "Upload failed" });
   }
 });
 
 // -------------------------------
-// ADMIN GET SUBMISSIONS
+// ADMIN (GET SUBMISSIONS)
 // -------------------------------
 app.get("/api/admin/submissions", (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
     return res.json({ error: "Unauthorized" });
 
-  const rows = db.prepare("SELECT * FROM submissions ORDER BY id DESC").all();
+  const rows = db.prepare(`SELECT * FROM submissions ORDER BY id DESC`).all();
   res.json(rows);
 });
 
@@ -188,13 +193,13 @@ app.post("/api/admin/approve", (req, res) => {
   if (password !== ADMIN_PASSWORD)
     return res.json({ error: "Unauthorized" });
 
-  db.prepare("UPDATE submissions SET status='approved' WHERE id=?").run(id);
+  db.prepare(`UPDATE submissions SET status='approved' WHERE id=?`).run(id);
 
   res.json({ approved: true });
 });
 
 // -------------------------------
-// PAY 5 XRP — RETURN-WEBHOOK MODE
+// PAY 5 XRP — USE RETURN URL {cid}
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -208,13 +213,14 @@ app.post("/api/pay-xrp", async (req, res) => {
         Amount: drops,
       },
       options: {
+        // Xumm will replace {cid} with our custom_meta.identifier
         return_url: {
-          app: CREATOR_PAGE,
-          web: CREATOR_PAGE,
-          webhook: `https://cfc-nft-creator-backend.onrender.com/api/xumm-return`,
+          app: `${RETURN_HANDLER}?cid={cid}`,
+          web: `${RETURN_HANDLER}?cid={cid}`,
         },
       },
       custom_meta: {
+        // This will show up as {cid} in return_url
         identifier: `PAYMENT_${submissionId}`,
       },
     });
@@ -229,7 +235,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 // AUTO-MINT FUNCTION
 // -------------------------------
 async function autoMint(submissionId) {
-  const sub = db.prepare("SELECT * FROM submissions WHERE id=?").get(submissionId);
+  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
   if (!sub) return;
 
   try {
@@ -245,9 +251,8 @@ async function autoMint(submissionId) {
       txjson: mintTx,
       options: {
         return_url: {
-          app: CREATOR_PAGE,
-          web: CREATOR_PAGE,
-          webhook: `https://cfc-nft-creator-backend.onrender.com/api/xumm-return`,
+          app: `${RETURN_HANDLER}?cid={cid}`,
+          web: `${RETURN_HANDLER}?cid={cid}`,
         },
       },
       custom_meta: {
@@ -260,41 +265,51 @@ async function autoMint(submissionId) {
 }
 
 // -------------------------------
-// RETURN-WEBHOOK HANDLER
+// RETURN HANDLER (NO WEBHOOK NEEDED)
+// Xumm sends user here after they SIGN
 // -------------------------------
-app.get("/api/xumm-return", (req, res) => {
-  const payload = req.query;
+app.get("/api/xumm-return", async (req, res) => {
+  try {
+    const cid = typeof req.query.cid === "string" ? req.query.cid : "";
 
-  // PAYMENT COMPLETED
-  if (payload.custom_meta?.identifier?.startsWith("PAYMENT_") && payload.signed === "true") {
-    const id = payload.custom_meta.identifier.replace("PAYMENT_", "");
-    db.prepare("UPDATE submissions SET payment_status='paid' WHERE id=?").run(id);
-    autoMint(id);
+    if (!cid) {
+      return res.redirect(CREATOR_PAGE);
+    }
+
+    // PAYMENT COMPLETED
+    if (cid.startsWith("PAYMENT_")) {
+      const submissionId = cid.replace("PAYMENT_", "");
+
+      db.prepare(
+        `UPDATE submissions SET payment_status='paid' WHERE id=?`
+      ).run(submissionId);
+
+      // Start mint flow (user will see a second Xumm sign request)
+      autoMint(submissionId);
+    }
+
+    // MINT COMPLETED
+    if (cid.startsWith("MINT_")) {
+      const submissionId = cid.replace("MINT_", "");
+
+      db.prepare(
+        `UPDATE submissions SET mint_status='minted' WHERE id=?`
+      ).run(submissionId);
+    }
+  } catch (e) {
+    console.log("xumm-return error:", e.message);
   }
 
-  // MINT COMPLETED
-  if (payload.custom_meta?.identifier?.startsWith("MINT_") && payload.signed === "true") {
-    const id = payload.custom_meta.identifier.replace("MINT_", "");
-    db.prepare("UPDATE submissions SET mint_status='minted' WHERE id=?").run(id);
-  }
-
+  // Always send user back to creator page
   return res.redirect(CREATOR_PAGE);
 });
 
 // -------------------------------
-// REMOVE LEGACY WEBHOOK (SAFE)
+// OPTIONAL: LEGACY WEBHOOK (SAFE NO-OP)
 // -------------------------------
-// It never runs on Render free tier & is no longer needed.
-
-// -------------------------------
-// REVERSE PROXY IFRAME FIX
-// -------------------------------
-app.get("/proxy/creator", (req, res) => {
-  res.sendFile(path.join(__dirname, "creator-proxy.html"));
-});
-
-app.get("/proxy/admin", (req, res) => {
-  res.sendFile(path.join(__dirname, "admin-proxy.html"));
+app.post("/api/xumm-webhook", async (req, res) => {
+  // We no longer depend on this, but it's harmless if still configured.
+  res.json({ received: true });
 });
 
 // -------------------------------
