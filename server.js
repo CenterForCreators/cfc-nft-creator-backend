@@ -27,7 +27,6 @@ const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const PORT = process.env.PORT || 4000;
 
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
-const WEBHOOK_URL = "https://cfc-nft-creator-backend.onrender.com/api/xumm-webhook"; // kept for compatibility
 
 // -------------------------------
 // APP INIT
@@ -201,7 +200,7 @@ app.post("/api/admin/approve", (req, res) => {
 });
 
 // -------------------------------
-// PAY 5 XRP (TRIGGER AUTO-MINT) — RETURN WEBHOOK MODE
+// PAY 5 XRP — RETURN-WEBHOOK MODE
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -233,7 +232,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// AUTO-MINT FUNCTION (UNCHANGED)
+// AUTO-MINT FUNCTION
 // -------------------------------
 async function autoMint(submissionId) {
   const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
@@ -268,20 +267,19 @@ async function autoMint(submissionId) {
 }
 
 // -------------------------------
-// RETURN-WEBHOOK ROUTE (NEW)
-// ALWAYS WORKS ON FREE RENDER
+// RETURN WEBHOOK (ALWAYS WORKS)
 // -------------------------------
 app.get("/api/xumm-return", (req, res) => {
   const payload = req.query;
 
-  // PAYMENT
+  // PAYMENT COMPLETED
   if (payload.custom_meta?.identifier?.startsWith("PAYMENT_") && payload.signed === "true") {
     const id = payload.custom_meta.identifier.replace("PAYMENT_", "");
     db.prepare(`UPDATE submissions SET payment_status='paid' WHERE id=?`).run(id);
     autoMint(id);
   }
 
-  // MINT
+  // MINT COMPLETED
   if (payload.custom_meta?.identifier?.startsWith("MINT_") && payload.signed === "true") {
     const id = payload.custom_meta.identifier.replace("MINT_", "");
     db.prepare(`UPDATE submissions SET mint_status='minted' WHERE id=?`).run(id);
@@ -291,10 +289,9 @@ app.get("/api/xumm-return", (req, res) => {
 });
 
 // -------------------------------
-// LEGACY DIRECT WEBHOOK (KEPT IN CASE)
+// LEGACY DIRECT WEBHOOK (OPTIONAL)
 // -------------------------------
 app.post("/api/xumm-webhook", async (req, res) => {
-  // Even if Render sleeps, return-webhook mode covers you.
   res.json({ received: true });
 });
 
