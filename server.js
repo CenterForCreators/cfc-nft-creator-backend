@@ -185,6 +185,20 @@ app.get("/api/admin/submissions", (req, res) => {
 });
 
 // -------------------------------
+// PUBLIC — VIEW SUBMISSIONS BY WALLET  ✅ (FIX)
+// -------------------------------
+app.get("/api/submissions/by-wallet", (req, res) => {
+  const { wallet } = req.query;
+  if (!wallet) return res.json([]);
+
+  const rows = db.prepare(
+    `SELECT * FROM submissions WHERE creator_wallet=? ORDER BY id DESC`
+  ).all(wallet);
+
+  res.json(rows);
+});
+
+// -------------------------------
 // ADMIN — APPROVE
 // -------------------------------
 app.post("/api/admin/approve", (req, res) => {
