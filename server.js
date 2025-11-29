@@ -1,7 +1,8 @@
 // ========================================
-// CFC NFT CREATOR — FREE XRPL POLLING FLOW
-// No webhook, no return-url dependency
-// Payment + Mint detection now works 100%
+// CFC NFT CREATOR — M1 (Auto-Mint After Payment)
+// No webhook required
+// Redirect works
+// Payment + Mint updates work
 // ========================================
 
 import express from "express";
@@ -24,13 +25,12 @@ const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
 const XUMM_API_KEY = process.env.XUMM_API_KEY;
 const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
-const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd"; // your XRP address
+const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const PORT = process.env.PORT || 4000;
 
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
-
-// XRPL public server
-const XRPL_NODE = "wss://s1.ripple.com";
+const BACKEND = "https://cfc-nft-creator-backend.onrender.com";
+const RETURN_URL = `${BACKEND}/api/xumm-return`;
 
 // -------------------------------
 // APP INIT
@@ -76,7 +76,7 @@ db.prepare(`
 `).run();
 
 // -------------------------------
-// UTIL — MAKE XUMM PAYLOAD
+// UTIL — CREATE XUMM PAYLOAD
 // -------------------------------
 async function createXummPayload(payload) {
   const r = await axios.post("https://xumm.app/api/v1/platform/payload", payload, {
@@ -185,20 +185,6 @@ app.get("/api/admin/submissions", (req, res) => {
 });
 
 // -------------------------------
-// PUBLIC — VIEW SUBMISSIONS BY WALLET  ✅ (FIX)
-// -------------------------------
-app.get("/api/submissions/by-wallet", (req, res) => {
-  const { wallet } = req.query;
-  if (!wallet) return res.json([]);
-
-  const rows = db.prepare(
-    `SELECT * FROM submissions WHERE creator_wallet=? ORDER BY id DESC`
-  ).all(wallet);
-
-  res.json(rows);
-});
-
-// -------------------------------
 // ADMIN — APPROVE
 // -------------------------------
 app.post("/api/admin/approve", (req, res) => {
@@ -211,7 +197,7 @@ app.post("/api/admin/approve", (req, res) => {
 });
 
 // -------------------------------
-// ADMIN — REJECT (FIXED)
+// ADMIN — REJECT
 // -------------------------------
 app.post("/api/admin/reject", (req, res) => {
   const { id, password } = req.body;
@@ -239,6 +225,12 @@ app.post("/api/pay-xrp", async (req, res) => {
       },
       custom_meta: {
         identifier: `PAYMENT_${submissionId}`
+      },
+      options: {
+        return_url: {
+          app: `${RETURN_URL}?cid={cid}`,
+          web: `${RETURN_URL}?cid={cid}`
+        }
       }
     });
 
@@ -249,69 +241,58 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// XRPL POLLING — CHECK PAYMENT
+// AUTO-MINT FUNCTION
 // -------------------------------
-app.get("/api/check-payment/:id/:wallet", async (req, res) => {
-  const { id, wallet } = req.params;
+async function autoMint(submissionId) {
+  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
+  if (!sub) return;
 
-  const client = new xrpl.Client(XRPL_NODE);
-  await client.connect();
+  const mintTx = {
+    TransactionType: "NFTokenMint",
+    Account: sub.creator_wallet,
+    URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
+    Flags: 8,
+    NFTokenTaxon: 1
+  };
 
-  const transactions = await client.request({
-    command: "account_tx",
-    account: wallet,
-    ledger_index_min: -1,
-    ledger_index_max: -1,
-    limit: 50
+  await createXummPayload({
+    txjson: mintTx,
+    custom_meta: {
+      identifier: `MINT_${submissionId}`
+    },
+    options: {
+      return_url: {
+        app: `${RETURN_URL}?cid={cid}`,
+        web: `${RETURN_URL}?cid={cid}`
+      }
+    }
   });
+}
 
-  client.disconnect();
+// -------------------------------
+// RETURN HANDLER
+// -------------------------------
+app.get("/api/xumm-return", async (req, res) => {
+  const cid = req.query.cid || "";
 
-  const paid = transactions.result.transactions.some((tx) => {
-    return (
-      tx.tx.TransactionType === "Payment" &&
-      tx.tx.Destination === PAYMENT_DEST &&
-      tx.tx.Amount === xrpl.xrpToDrops("5") &&
-      tx.meta.TransactionResult === "tesSUCCESS"
-    );
-  });
+  if (!cid) return res.redirect(CREATOR_PAGE);
 
-  if (paid) {
+  // PAYMENT
+  if (cid.startsWith("PAYMENT_")) {
+    const id = cid.replace("PAYMENT_", "");
     db.prepare(`UPDATE submissions SET payment_status='paid' WHERE id=?`).run(id);
+
+    // Trigger mint
+    autoMint(id);
   }
 
-  res.json({ paid });
-});
-
-// -------------------------------
-// XRPL POLLING — CHECK MINT
-// -------------------------------
-app.get("/api/check-mint/:id/:wallet", async (req, res) => {
-  const { id, wallet } = req.params;
-
-  const client = new xrpl.Client(XRPL_NODE);
-  await client.connect();
-
-  const nfts = await client.request({
-    command: "account_nfts",
-    account: wallet
-  });
-
-  client.disconnect();
-
-  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
-  if (!sub) return res.json({ minted: false });
-
-  const minted = nfts.result.account_nfts.some((n) => {
-    const uriHex = xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`);
-    return n.URI === uriHex;
-  });
-
-  if (minted) {
+  // MINT
+  if (cid.startsWith("MINT_")) {
+    const id = cid.replace("MINT_", "");
     db.prepare(`UPDATE submissions SET mint_status='minted' WHERE id=?`).run(id);
   }
 
-  res.json({ minted });
+  return res.redirect(CREATOR_PAGE);
 });
 
 // -------------------------------
