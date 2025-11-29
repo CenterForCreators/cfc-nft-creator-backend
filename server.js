@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT (FREE MODE)
+// CFC NFT CREATOR — PAYMENT + MINT (FREE MODE, MANUAL "MINT" BUTTON)
 // Uses Xumm payload.get polling (no paid webhooks)
 // ========================================
 
@@ -26,7 +26,7 @@ const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 // Wallet where ALL payments go
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 
-// Public creator page (where we always send users back)
+// Public creator page
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
 
 const PORT = process.env.PORT || 4000;
@@ -74,17 +74,12 @@ db.prepare(`
   )
 `).run();
 
-// Add extra columns if they don't exist yet
 try {
   db.prepare(`ALTER TABLE submissions ADD COLUMN payment_uuid TEXT`).run();
-} catch (e) {
-  // ignore if already exists
-}
+} catch (e) {}
 try {
   db.prepare(`ALTER TABLE submissions ADD COLUMN mint_uuid TEXT`).run();
-} catch (e) {
-  // ignore if already exists
-}
+} catch (e) {}
 
 // -------------------------------
 // UTIL — MAKE XUMM PAYLOAD
@@ -108,7 +103,7 @@ async function createXummPayload(payload) {
   };
 }
 
-// Get payload status from Xumm (used for security checks)
+// Check payload status from Xumm
 async function getXummPayload(uuid) {
   const r = await axios.get(
     `https://xumm.app/api/v1/platform/payload/${uuid}`,
@@ -131,7 +126,8 @@ app.post("/api/wallet-connect", async (req, res) => {
       txjson: { TransactionType: "SignIn" },
     });
     res.json({ uuid, link });
-  } catch {
+  } catch (err) {
+    console.log("wallet-connect error:", err.message);
     res.status(500).json({ error: "Wallet connect failed" });
   }
 });
@@ -230,7 +226,7 @@ app.post("/api/admin/approve", (req, res) => {
 });
 
 // -------------------------------
-// OPTIONAL: ADMIN REJECT (still used)
+// ADMIN REJECT
 // -------------------------------
 app.post("/api/admin/reject", (req, res) => {
   const { id, password } = req.body;
@@ -268,7 +264,6 @@ app.post("/api/pay-xrp", async (req, res) => {
       },
     });
 
-    // Store payment payload UUID on submission
     db.prepare(
       `UPDATE submissions SET payment_uuid=? WHERE id=?`
     ).run(uuid, submissionId);
@@ -281,8 +276,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// AUTO-MINT: CREATE MINT PAYLOAD
-// (called after payment is marked paid)
+// CREATE MINT PAYLOAD (helper)
 // -------------------------------
 async function createMintPayload(submissionId) {
   const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
@@ -318,7 +312,7 @@ async function createMintPayload(submissionId) {
 
 // -------------------------------
 // MARK PAID (CALLED BY FRONT-END AFTER PAYMENT SIGNED)
-// Also kicks off mint sign-request and returns mint link
+// (no auto-mint here anymore)
 // -------------------------------
 app.post("/api/mark-paid", async (req, res) => {
   try {
@@ -326,38 +320,23 @@ app.post("/api/mark-paid", async (req, res) => {
     const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
     if (!sub) return res.status(404).json({ error: "Not found" });
 
-    // Optional safety: ensure the uuid matches what we stored
     if (sub.payment_uuid && sub.payment_uuid !== uuid) {
       return res.status(400).json({ error: "UUID mismatch" });
     }
 
-    // Double-check with Xumm that it is signed
     const payload = await getXummPayload(uuid);
-    const signed = payload?.meta?.signed ?? payload?.signed; // meta.signed or signed
+    const signed = payload?.meta?.signed ?? payload?.signed;
     const resolved = payload?.meta?.resolved ?? payload?.resolved;
 
     if (!resolved || !signed) {
       return res.json({ ok: false, reason: "Not signed yet" });
     }
 
-    // Mark payment as paid
     db.prepare(
       `UPDATE submissions SET payment_status='paid' WHERE id=?`
     ).run(id);
 
-    // Create mint payload
-    const mint = await createMintPayload(id);
-
-    if (!mint) {
-      return res.json({ ok: true, mintCreated: false });
-    }
-
-    res.json({
-      ok: true,
-      mintCreated: true,
-      mintUuid: mint.uuid,
-      mintLink: mint.link,
-    });
+    res.json({ ok: true });
   } catch (err) {
     console.log("mark-paid error:", err.message);
     res.status(500).json({ error: "mark-paid failed" });
@@ -365,7 +344,36 @@ app.post("/api/mark-paid", async (req, res) => {
 });
 
 // -------------------------------
-// MARK MINTED (CALLED BY FRONT-END AFTER MINT SIGNED)
+// CREATE MINT PAYLOAD (WHEN USER CLICKS "MINT NFT")
+// -------------------------------
+app.post("/api/mint-now", async (req, res) => {
+  try {
+    const { id } = req.body;
+    const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
+    if (!sub) return res.status(404).json({ error: "Not found" });
+
+    if (sub.payment_status !== "paid") {
+      return res.status(400).json({ error: "Payment not completed" });
+    }
+
+    const mint = await createMintPayload(id);
+    if (!mint) {
+      return res.status(500).json({ error: "Failed to create mint payload" });
+    }
+
+    res.json({
+      ok: true,
+      mintUuid: mint.uuid,
+      mintLink: mint.link,
+    });
+  } catch (err) {
+    console.log("mint-now error:", err.message);
+    res.status(500).json({ error: "mint-now failed" });
+  }
+});
+
+// -------------------------------
+// MARK MINTED (AFTER USER SIGNS MINT)
 // -------------------------------
 app.post("/api/mark-minted", async (req, res) => {
   try {
@@ -397,10 +405,9 @@ app.post("/api/mark-minted", async (req, res) => {
 });
 
 // -------------------------------
-// OPTIONAL: LEGACY WEBHOOK (SAFE NO-OP)
+// OPTIONAL: LEGACY WEBHOOK (NO-OP)
 // -------------------------------
 app.post("/api/xumm-webhook", async (req, res) => {
-  // Not used anymore, but harmless if still configured in Xumm.
   res.json({ received: true });
 });
 
