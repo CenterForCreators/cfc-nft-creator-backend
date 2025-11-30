@@ -343,7 +343,11 @@ app.post("/api/start-mint", async (req, res) => {
     NFTokenTaxon: 1
   };
 
-  const { uuid, link } = await createXummPayload({ txjson: mintTx });
+  // ⭐ ONLY FIX ADDED (redirect after mint)
+  const { uuid, link } = await createXummPayload({
+    txjson: mintTx,
+    options: { return_url: { app: CREATOR_PAGE, web: CREATOR_PAGE } }
+  });
 
   res.json({ uuid, link });
 });
