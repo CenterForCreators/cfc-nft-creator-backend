@@ -349,6 +349,12 @@ app.post("/api/start-mint", async (req, res) => {
     options: { return_url: { app: CREATOR_PAGE, web: CREATOR_PAGE } }
   });
 
+  // ⭐ ONLY FIX YOU REQUESTED — NOTHING ELSE
+  await db.run(
+    "UPDATE submissions SET mint_status = 'minted' WHERE id = ?",
+    [id]
+  );
+
   res.json({ uuid, link });
 });
 
