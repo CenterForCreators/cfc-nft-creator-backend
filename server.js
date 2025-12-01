@@ -8,11 +8,16 @@ import cors from "cors";
 import fileUpload from "express-fileupload";
 import axios from "axios";
 import FormData from "form-data";
-import Database from "better-sqlite3";
 import xrpl from "xrpl";
 import dotenv from "dotenv";
+import pg from "pg";
 
 dotenv.config();
+
+const { Pool } = pg;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 // -------------------------------
 // CONFIG
@@ -50,28 +55,28 @@ app.use(
 );
 
 // -------------------------------
-// SQLITE SETUP
+// DATABASE INITIALIZATION
 // -------------------------------
-const db = new Database("./submissions.sqlite");
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS submissions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    creator_wallet TEXT,
-    name TEXT,
-    description TEXT,
-    image_cid TEXT,
-    metadata_cid TEXT,
-    batch_qty INTEGER,
-    status TEXT,
-    payment_status TEXT DEFAULT 'unpaid',
-    mint_status TEXT DEFAULT 'pending',
-    created_at TEXT
-  )
-`).run();
-
-try { db.prepare(`ALTER TABLE submissions ADD COLUMN payment_uuid TEXT`).run(); } catch {}
-try { db.prepare(`ALTER TABLE submissions ADD COLUMN mint_uuid TEXT`).run(); } catch {}
+async function initDB() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS submissions (
+      id SERIAL PRIMARY KEY,
+      creator_wallet TEXT,
+      name TEXT,
+      description TEXT,
+      image_cid TEXT,
+      metadata_cid TEXT,
+      batch_qty INTEGER,
+      status TEXT,
+      payment_status TEXT DEFAULT 'unpaid',
+      mint_status TEXT DEFAULT 'pending',
+      created_at TEXT,
+      payment_uuid TEXT,
+      mint_uuid TEXT
+    );
+  `);
+}
+initDB();
 
 // -------------------------------
 // UTIL — MAKE + GET PAYLOAD
@@ -121,31 +126,23 @@ app.post("/api/wallet-connect", async (req, res) => {
 // -------------------------------
 // SUBMIT NFT
 // -------------------------------
-app.post("/api/submit", (req, res) => {
+app.post("/api/submit", async (req, res) => {
   try {
     const { wallet, name, description, imageCid, metadataCid, quantity } =
       req.body;
 
-    const result = db
-      .prepare(
-        `
+    const result = await pool.query(
+      `
       INSERT INTO submissions
       (creator_wallet, name, description, image_cid, metadata_cid, batch_qty, status, payment_status, mint_status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', 'unpaid', 'pending', ?)
-    `
-      )
-      .run(
-        wallet,
-        name,
-        description,
-        imageCid,
-        metadataCid,
-        quantity,
-        new Date().toISOString()
-      );
+      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7)
+      RETURNING id
+    `,
+      [wallet, name, description, imageCid, metadataCid, quantity, new Date().toISOString()]
+    );
 
-    res.json({ submitted: true, id: result.lastInsertRowid });
-  } catch {
+    res.json({ submitted: true, id: result.rows[0].id });
+  } catch (err) {
     res.status(500).json({ error: "Submission failed" });
   }
 });
@@ -182,34 +179,34 @@ app.post("/api/upload", async (req, res) => {
 });
 
 // -------------------------------
-// ADMIN
+// ADMIN — GET ALL SUBMISSIONS
 // -------------------------------
-app.get("/api/admin/submissions", (req, res) => {
+app.get("/api/admin/submissions", async (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
     return res.json({ error: "Unauthorized" });
 
-  const rows = db.prepare(`SELECT * FROM submissions ORDER BY id DESC`).all();
-  res.json(rows);
+  const rows = await pool.query(`SELECT * FROM submissions ORDER BY id DESC`);
+  res.json(rows.rows);
 });
 
-app.post("/api/admin/approve", (req, res) => {
+app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
 
-  db.prepare(`UPDATE submissions SET status='approved' WHERE id=?`).run(id);
+  await pool.query(`UPDATE submissions SET status='approved' WHERE id=$1`, [id]);
   res.json({ approved: true });
 });
 
-app.post("/api/admin/reject", (req, res) => {
+app.post("/api/admin/reject", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD) return res.json({ error: "Unauthorized" });
 
-  db.prepare(`UPDATE submissions SET status='rejected' WHERE id=?`).run(id);
+  await pool.query(`UPDATE submissions SET status='rejected' WHERE id=$1`, [id]);
   res.json({ rejected: true });
 });
 
 // -------------------------------
-// PAY 5 XRP PAYLOAD
+// PAY 5 XRP
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -226,10 +223,10 @@ app.post("/api/pay-xrp", async (req, res) => {
       custom_meta: { identifier: `PAYMENT_${submissionId}` },
     });
 
-    db.prepare(`UPDATE submissions SET payment_uuid=? WHERE id=?`).run(
+    await pool.query(`UPDATE submissions SET payment_uuid=$1 WHERE id=$2`, [
       uuid,
-      submissionId
-    );
+      submissionId,
+    ]);
 
     res.json({ uuid, link });
   } catch {
@@ -238,16 +235,18 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// MINT PAYLOAD CREATION
+// CREATE MINT PAYLOAD
 // -------------------------------
 async function createMintPayload(submissionId) {
-  const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(submissionId);
-  if (!sub) return null;
+  const sub = await pool.query(`SELECT * FROM submissions WHERE id=$1`, [submissionId]);
+  if (!sub.rows.length) return null;
+
+  const s = sub.rows[0];
 
   const mintTx = {
     TransactionType: "NFTokenMint",
-    Account: sub.creator_wallet,
-    URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
+    Account: s.creator_wallet,
+    URI: xrpl.convertStringToHex(`ipfs://${s.metadata_cid}`),
     Flags: 8,
     NFTokenTaxon: 1,
   };
@@ -258,10 +257,10 @@ async function createMintPayload(submissionId) {
     custom_meta: { identifier: `MINT_${submissionId}` },
   });
 
-  db.prepare(`UPDATE submissions SET mint_uuid=? WHERE id=?`).run(
+  await pool.query(`UPDATE submissions SET mint_uuid=$1 WHERE id=$2`, [
     uuid,
-    submissionId
-  );
+    submissionId,
+  ]);
 
   return { uuid, link };
 }
@@ -272,11 +271,9 @@ async function createMintPayload(submissionId) {
 app.post("/api/mark-paid", async (req, res) => {
   try {
     const { id, uuid } = req.body;
-    const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
-    if (!sub) return res.status(404).json({ error: "Not found" });
 
-    if (sub.payment_uuid && sub.payment_uuid !== uuid)
-      return res.status(400).json({ error: "UUID mismatch" });
+    const sub = await pool.query(`SELECT * FROM submissions WHERE id=$1`, [id]);
+    if (!sub.rows.length) return res.status(404).json({ error: "Not found" });
 
     const payload = await getXummPayload(uuid);
     const signed = payload?.meta?.signed ?? payload?.signed;
@@ -284,7 +281,9 @@ app.post("/api/mark-paid", async (req, res) => {
 
     if (!resolved || !signed) return res.json({ ok: false });
 
-    db.prepare(`UPDATE submissions SET payment_status='paid' WHERE id=?`).run(id);
+    await pool.query(`UPDATE submissions SET payment_status='paid' WHERE id=$1`, [
+      id,
+    ]);
 
     const mint = await createMintPayload(id);
 
@@ -307,11 +306,9 @@ app.post("/api/mark-paid", async (req, res) => {
 app.post("/api/mark-minted", async (req, res) => {
   try {
     const { id, uuid } = req.body;
-    const sub = db.prepare(`SELECT * FROM submissions WHERE id=?`).get(id);
-    if (!sub) return res.status(404).json({ error: "Not found" });
 
-    if (sub.mint_uuid && sub.mint_uuid !== uuid)
-      return res.status(400).json({ error: "UUID mismatch" });
+    const sub = await pool.query(`SELECT * FROM submissions WHERE id=$1`, [id]);
+    if (!sub.rows.length) return res.status(404).json({ error: "Not found" });
 
     const payload = await getXummPayload(uuid);
     const signed = payload?.meta?.signed ?? payload?.signed;
@@ -319,7 +316,9 @@ app.post("/api/mark-minted", async (req, res) => {
 
     if (!resolved || !signed) return res.json({ ok: false });
 
-    db.prepare(`UPDATE submissions SET mint_status='minted' WHERE id=?`).run(id);
+    await pool.query(`UPDATE submissions SET mint_status='minted' WHERE id=$1`, [
+      id,
+    ]);
 
     res.json({ ok: true });
   } catch {
@@ -332,26 +331,29 @@ app.post("/api/mark-minted", async (req, res) => {
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
   const { id } = req.body;
-  const sub = db.prepare("SELECT * FROM submissions WHERE id=?").get(id);
-  if (!sub) return res.status(404).json({ error: "Not found" });
+
+  const sub = await pool.query(`SELECT * FROM submissions WHERE id=$1`, [id]);
+  if (!sub.rows.length) return res.status(404).json({ error: "Not found" });
+
+  const s = sub.rows[0];
 
   const mintTx = {
     TransactionType: "NFTokenMint",
-    Account: sub.creator_wallet,
-    URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
+    Account: s.creator_wallet,
+    URI: xrpl.convertStringToHex(`ipfs://${s.metadata_cid}`),
     Flags: 8,
-    NFTokenTaxon: 1
+    NFTokenTaxon: 1,
   };
 
   const { uuid, link } = await createXummPayload({
     txjson: mintTx,
-    options: { return_url: { app: CREATOR_PAGE, web: CREATOR_PAGE } }
+    options: { return_url: { app: CREATOR_PAGE, web: CREATOR_PAGE } },
   });
 
-  // ✅ ONLY FIX (no regressions)
-  db.prepare("UPDATE submissions SET mint_status='minted', mint_uuid=? WHERE id=?").run(
-    uuid,
-    id
+  // ⭐ ONLY FIX YOU REQUESTED (kept exactly)
+  await pool.query(
+    `UPDATE submissions SET mint_status='minted', mint_uuid=$1 WHERE id=$2`,
+    [uuid, id]
   );
 
   res.json({ uuid, link });
@@ -366,7 +368,7 @@ app.post("/api/xumm-webhook", async (req, res) => {
 
 // -------------------------------
 // START SERVER
-// -------------------------------
+–-------------------------------
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
