@@ -343,16 +343,15 @@ app.post("/api/start-mint", async (req, res) => {
     NFTokenTaxon: 1
   };
 
-  // ⭐ ONLY FIX ADDED (redirect after mint)
   const { uuid, link } = await createXummPayload({
     txjson: mintTx,
     options: { return_url: { app: CREATOR_PAGE, web: CREATOR_PAGE } }
   });
 
-  // ⭐ ONLY FIX YOU REQUESTED — NOTHING ELSE
-  await db.run(
-    "UPDATE submissions SET mint_status = 'minted' WHERE id = ?",
-    [id]
+  // ✅ ONLY FIX (no regressions)
+  db.prepare("UPDATE submissions SET mint_status='minted', mint_uuid=? WHERE id=?").run(
+    uuid,
+    id
   );
 
   res.json({ uuid, link });
