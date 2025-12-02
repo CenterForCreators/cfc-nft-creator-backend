@@ -56,7 +56,6 @@ app.use(
 // -------------------------------
 // DATABASE INITIALIZATION
 // -------------------------------
-// ⭐ FIX 1 — Add terms + prices (persistent)
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS submissions (
@@ -73,7 +72,6 @@ async function initDB() {
       created_at TEXT,
       payment_uuid TEXT,
       mint_uuid TEXT,
-
       terms TEXT,
       price_xrp TEXT,
       price_rlusd TEXT
@@ -116,7 +114,6 @@ async function getXummPayload(uuid) {
 // -------------------------------
 // SUBMIT NFT
 // -------------------------------
-// ⭐ FIX 2 — store terms + prices in DB
 app.post("/api/submit", async (req, res) => {
   try {
     const { wallet, name, description, imageCid, metadataCid, quantity } =
@@ -161,3 +158,10 @@ app.post("/api/submit", async (req, res) => {
 // -------------------------------
 // (ALL OTHER ROUTES UNCHANGED)
 // -------------------------------
+
+// -------------------------------
+// START SERVER
+// -------------------------------
+app.listen(PORT, () => {
+  console.log("CFC NFT Creator Backend running on", PORT);
+});
