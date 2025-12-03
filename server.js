@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT (FREE MODE)
+// CFC NFT CREATOR — POPUP ENABLED VERSION
 // ========================================
 
 import express from "express";
@@ -24,11 +24,8 @@ const pool = new Pool({
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const PINATA_API_KEY = process.env.PINATA_API_KEY;
 const PINATA_API_SECRET = process.env.PINATA_API_SECRET;
-const XUMM_API_KEY = process.env.XUMM_API_KEY;
-const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
-const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
 const PORT = process.env.PORT || 4000;
 
 // -------------------------------
@@ -38,7 +35,6 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
-// ⭐ CORS — allow your two frontends
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -47,11 +43,8 @@ app.use(
         "https://centerforcreators.github.io",
       ];
 
-      if (!origin || allowed.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS blocked: " + origin));
-      }
+      if (!origin || allowed.includes(origin)) callback(null, true);
+      else callback(new Error("CORS blocked: " + origin));
     },
     methods: ["GET", "POST"],
     credentials: true,
@@ -59,7 +52,7 @@ app.use(
 );
 
 // -------------------------------
-// DATABASE INITIALIZATION
+// DB INIT
 // -------------------------------
 async function initDB() {
   await pool.query(`
@@ -86,39 +79,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD
-// -------------------------------
-// ✅ FIX: wrap transaction in { txjson: ... } as required by Xumm
-async function createXummPayload(txjson) {
-  const r = await axios.post(
-    "https://xumm.app/api/v1/platform/payload",
-    { txjson },
-    {
-      headers: {
-        "X-API-Key": XUMM_API_KEY,
-        "X-API-Secret": XUMM_API_SECRET,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-  return { uuid: r.data.uuid, link: r.data.next.always };
-}
-
-async function getXummPayload(uuid) {
-  const r = await axios.get(
-    `https://xumm.app/api/v1/platform/payload/${uuid}`,
-    {
-      headers: {
-        "X-API-Key": XUMM_API_KEY,
-        "X-API-Secret": XUMM_API_SECRET,
-      },
-    }
-  );
-  return r.data;
-}
-
-// -------------------------------
-// UPLOAD FILE TO PINATA
+// UPLOAD TO PINATA
 // -------------------------------
 app.post("/api/upload", async (req, res) => {
   try {
@@ -142,7 +103,6 @@ app.post("/api/upload", async (req, res) => {
 
     res.json({ cid: uploadRes.data.IpfsHash });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -156,10 +116,6 @@ app.post("/api/submit", async (req, res) => {
       req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
-
-    const terms = metadataJSON.terms || null;
-    const price_xrp = metadataJSON.price_xrp || null;
-    const price_rlusd = metadataJSON.price_rlusd || null;
 
     const result = await pool.query(
       `
@@ -178,21 +134,20 @@ app.post("/api/submit", async (req, res) => {
         metadataCid,
         quantity,
         new Date().toISOString(),
-        terms,
-        price_xrp,
-        price_rlusd,
+        metadataJSON.terms || null,
+        metadataJSON.price_xrp || null,
+        metadataJSON.price_rlusd || null,
       ]
     );
 
     res.json({ submitted: true, id: result.rows[0].id });
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: "Submission failed" });
   }
 });
 
 // -------------------------------
-// ADMIN — GET ALL SUBMISSIONS
+// ADMIN GET ALL
 // -------------------------------
 app.get("/api/admin/submissions", async (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
@@ -203,7 +158,7 @@ app.get("/api/admin/submissions", async (req, res) => {
 });
 
 // -------------------------------
-// ADMIN — APPROVE
+// ADMIN APPROVE
 // -------------------------------
 app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
@@ -218,7 +173,7 @@ app.post("/api/admin/approve", async (req, res) => {
 });
 
 // -------------------------------
-// ADMIN — REJECT
+// ADMIN REJECT
 // -------------------------------
 app.post("/api/admin/reject", async (req, res) => {
   const { id, password } = req.body;
@@ -232,17 +187,17 @@ app.post("/api/admin/reject", async (req, res) => {
   res.json({ ok: true });
 });
 
-// -------------------------------
-// PAY XRP
-// -------------------------------
+// ----------------------------------------------------
+// NEW ROUTE: RETURN TXJSON FOR PAY (FRONTEND CREATES POPUP)
+// ----------------------------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
     const { submissionId } = req.body;
 
-    const payload = {
+    const txjson = {
       TransactionType: "Payment",
       Destination: PAYMENT_DEST,
-      Amount: String(5 * 1_000_000), // 5 XRP
+      Amount: String(5 * 1_000_000),
       Memos: [
         {
           Memo: {
@@ -253,25 +208,74 @@ app.post("/api/pay-xrp", async (req, res) => {
       ],
     };
 
-    const { uuid, link } = await createXummPayload(payload);
-
-    await pool.query("UPDATE submissions SET payment_uuid=$1 WHERE id=$2", [
-      uuid,
-      submissionId,
-    ]);
-
-    res.json({ uuid, link });
+    res.json({ txjson });
   } catch (err) {
-    console.error("PAY XRP error:", err.response?.data || err.message || err);
-    res.status(500).json({ error: "Failed to create payment payload" });
+    res.status(500).json({ error: "Failed to generate txjson" });
   }
 });
 
-// -------------------------------
-// MARK PAID
-// -------------------------------
-app.post("/api/mark-paid", async (req, res) => {
+// ----------------------------------------------------
+// NEW: FRONTEND SAVES PAYMENT UUID
+// ----------------------------------------------------
+app.post("/api/save-payment-uuid", async (req, res) => {
   const { id, uuid } = req.body;
+
+  await pool.query(
+    "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
+    [uuid, id]
+  );
+
+  res.json({ ok: true });
+});
+
+// ----------------------------------------------------
+// NEW: RETURN TXJSON FOR MINT (FRONTEND CREATES POPUP)
+// ----------------------------------------------------
+app.post("/api/start-mint", async (req, res) => {
+  try {
+    const { id } = req.body;
+
+    const result = await pool.query(
+      "SELECT metadata_cid FROM submissions WHERE id=$1",
+      [id]
+    );
+    if (!result.rows.length)
+      return res.status(404).json({ error: "Not found" });
+
+    const uriHex = Buffer.from("ipfs://" + result.rows[0].metadata_cid).toString("hex");
+
+    const txjson = {
+      TransactionType: "NFTokenMint",
+      Flags: 8,
+      URI: uriHex,
+      NFTokenTaxon: 0,
+    };
+
+    res.json({ txjson });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create mint txjson" });
+  }
+});
+
+// ----------------------------------------------------
+// NEW: FRONTEND SAVES MINT UUID
+// ----------------------------------------------------
+app.post("/api/save-mint-uuid", async (req, res) => {
+  const { id, uuid } = req.body;
+
+  await pool.query(
+    "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
+    [uuid, id]
+  );
+
+  res.json({ ok: true });
+});
+
+// ----------------------------------------------------
+// MARK PAID
+// ----------------------------------------------------
+app.post("/api/mark-paid", async (req, res) => {
+  const { id } = req.body;
 
   await pool.query(
     "UPDATE submissions SET payment_status='paid' WHERE id=$1",
@@ -281,54 +285,9 @@ app.post("/api/mark-paid", async (req, res) => {
   res.json({ ok: true });
 });
 
-// -------------------------------
-// START MINT
-// -------------------------------
-// ✅ FIX: build a proper NFTokenMint with a real URI from metadata_cid
-app.post("/api/start-mint", async (req, res) => {
-  try {
-    const { id } = req.body;
-
-    // Look up submission to get its metadata CID
-    const result = await pool.query(
-      "SELECT metadata_cid FROM submissions WHERE id=$1",
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Submission not found" });
-    }
-
-    const metadataCid = result.rows[0].metadata_cid;
-
-    // xrpl expects hex-encoded URI
-    const uriString = "ipfs://" + metadataCid;
-    const uriHex = Buffer.from(uriString).toString("hex");
-
-    const payload = {
-      TransactionType: "NFTokenMint",
-      Flags: 8,          // transferable
-      URI: uriHex,       // hex-encoded "ipfs://<cid>"
-      NFTokenTaxon: 0,
-    };
-
-    const { uuid, link } = await createXummPayload(payload);
-
-    await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [
-      uuid,
-      id,
-    ]);
-
-    res.json({ uuid, link });
-  } catch (err) {
-    console.error("START MINT error:", err.response?.data || err.message || err);
-    res.status(500).json({ error: "Failed to create mint payload" });
-  }
-});
-
-// -------------------------------
+// ----------------------------------------------------
 // MARK MINTED
-// -------------------------------
+// ----------------------------------------------------
 app.post("/api/mark-minted", async (req, res) => {
   const { id } = req.body;
 
@@ -344,5 +303,5 @@ app.post("/api/mark-minted", async (req, res) => {
 // START SERVER
 // -------------------------------
 app.listen(PORT, () => {
-  console.log("CFC NFT Creator Backend running on", PORT);
+  console.log("Popup-enabled backend running on", PORT);
 });
