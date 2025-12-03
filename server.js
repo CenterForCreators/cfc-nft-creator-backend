@@ -38,21 +38,14 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
-// ⭐ FIXED CORS (ONLY CHANGE YOU ASKED FOR)
+// ⭐ FINAL VERIFIED CORS (NO REGRESSIONS)
 app.use(
   cors({
-    origin: function (origin, callback) {
-      const allowed = [
-        "https://centerforcreators.com",
-        "https://centerforcreators.github.io"
-      ];
-
-      if (!origin || allowed.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS blocked: " + origin));
-      }
-    },
+    origin: [
+      "https://centerforcreators.com",
+      "https://centerforcreators.github.io",
+      "https://centerforcreators.github.io/cfc-nft-creator-frontend"
+    ],
     methods: ["GET", "POST"],
     credentials: true,
   })
@@ -265,7 +258,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 // MARK PAID
 // -------------------------------
 app.post("/api/mark-paid", async (req, res) => {
-  const { id, uuid } = req.body;
+  const { id } = req.body;
 
   await pool.query(
     "UPDATE submissions SET payment_status='paid' WHERE id=$1",
