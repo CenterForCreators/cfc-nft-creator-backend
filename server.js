@@ -38,14 +38,21 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
-// ⭐ FINAL VERIFIED CORS (NO REGRESSIONS)
+// ⭐ CORS — allow your two frontends
 app.use(
   cors({
-    origin: [
-      "https://centerforcreators.com",
-      "https://centerforcreators.github.io",
-      "https://centerforcreators.github.io/cfc-nft-creator-frontend"
-    ],
+    origin: function (origin, callback) {
+      const allowed = [
+        "https://centerforcreators.com",
+        "https://centerforcreators.github.io",
+      ];
+
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS blocked: " + origin));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   })
@@ -81,10 +88,11 @@ initDB();
 // -------------------------------
 // UTIL — XUMM PAYLOAD
 // -------------------------------
-async function createXummPayload(payload) {
+// ⭐ FIX: wrap transaction inside { txjson: ... } to satisfy XUMM
+async function createXummPayload(txjson) {
   const r = await axios.post(
     "https://xumm.app/api/v1/platform/payload",
-    payload,
+    { txjson },
     {
       headers: {
         "X-API-Key": XUMM_API_KEY,
@@ -228,37 +236,42 @@ app.post("/api/admin/reject", async (req, res) => {
 // PAY XRP
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
-  const { submissionId } = req.body;
+  try {
+    const { submissionId } = req.body;
 
-  const payload = {
-    TransactionType: "Payment",
-    Destination: PAYMENT_DEST,
-    Amount: String(5 * 1_000_000), // 5 XRP
-    Memos: [
-      {
-        Memo: {
-          MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
-          MemoData: Buffer.from(String(submissionId)).toString("hex"),
+    const payload = {
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: String(5 * 1_000_000), // 5 XRP
+      Memos: [
+        {
+          Memo: {
+            MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
+            MemoData: Buffer.from(String(submissionId)).toString("hex"),
+          },
         },
-      },
-    ],
-  };
+      ],
+    };
 
-  const { uuid, link } = await createXummPayload(payload);
+    const { uuid, link } = await createXummPayload(payload);
 
-  await pool.query("UPDATE submissions SET payment_uuid=$1 WHERE id=$2", [
-    uuid,
-    submissionId,
-  ]);
+    await pool.query("UPDATE submissions SET payment_uuid=$1 WHERE id=$2", [
+      uuid,
+      submissionId,
+    ]);
 
-  res.json({ uuid, link });
+    res.json({ uuid, link });
+  } catch (err) {
+    console.error("PAY XRP error:", err.response?.data || err.message || err);
+    res.status(500).json({ error: "Failed to create payment payload" });
+  }
 });
 
 // -------------------------------
 // MARK PAID
 // -------------------------------
 app.post("/api/mark-paid", async (req, res) => {
-  const { id } = req.body;
+  const { id, uuid } = req.body;
 
   await pool.query(
     "UPDATE submissions SET payment_status='paid' WHERE id=$1",
@@ -272,23 +285,28 @@ app.post("/api/mark-paid", async (req, res) => {
 // START MINT
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
-  const { id } = req.body;
+  try {
+    const { id } = req.body;
 
-  const payload = {
-    TransactionType: "NFTokenMint",
-    Flags: 8,
-    URI: "",
-    NFTokenTaxon: 0,
-  };
+    const payload = {
+      TransactionType: "NFTokenMint",
+      Flags: 8,
+      URI: "",
+      NFTokenTaxon: 0,
+    };
 
-  const { uuid, link } = await createXummPayload(payload);
+    const { uuid, link } = await createXummPayload(payload);
 
-  await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [
-    uuid,
-    id,
-  ]);
+    await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [
+      uuid,
+      id,
+    ]);
 
-  res.json({ uuid, link });
+    res.json({ uuid, link });
+  } catch (err) {
+    console.error("START MINT error:", err.response?.data || err.message || err);
+    res.status(500).json({ error: "Failed to create mint payload" });
+  }
 });
 
 // -------------------------------
