@@ -81,7 +81,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — MAKE + GET PAYLOAD
+// UTIL — XUMM PAYLOAD
 // -------------------------------
 async function createXummPayload(payload) {
   const r = await axios.post(
@@ -110,6 +110,36 @@ async function getXummPayload(uuid) {
   );
   return r.data;
 }
+
+// -------------------------------
+// UPLOAD FILE TO PINATA
+// -------------------------------
+app.post("/api/upload", async (req, res) => {
+  try {
+    const file = req.files?.file;
+    if (!file) return res.status(400).json({ error: "No file" });
+
+    const form = new FormData();
+    form.append("file", file.data, file.name);
+
+    const uploadRes = await axios.post(
+      "https://api.pinata.cloud/pinning/pinFileToIPFS",
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          pinata_api_key: PINATA_API_KEY,
+          pinata_secret_api_key: PINATA_API_SECRET,
+        },
+      }
+    );
+
+    res.json({ cid: uploadRes.data.IpfsHash });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
+});
 
 // -------------------------------
 // SUBMIT NFT
@@ -156,8 +186,126 @@ app.post("/api/submit", async (req, res) => {
 });
 
 // -------------------------------
-// (ALL OTHER ROUTES UNCHANGED)
+// ADMIN — GET ALL SUBMISSIONS
 // -------------------------------
+app.get("/api/admin/submissions", async (req, res) => {
+  if (req.query.password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  const rows = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
+  res.json(rows.rows);
+});
+
+// -------------------------------
+// ADMIN — APPROVE
+// -------------------------------
+app.post("/api/admin/approve", async (req, res) => {
+  const { id, password } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [
+    id,
+  ]);
+
+  res.json({ ok: true });
+});
+
+// -------------------------------
+// ADMIN — REJECT
+// -------------------------------
+app.post("/api/admin/reject", async (req, res) => {
+  const { id, password } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  await pool.query("UPDATE submissions SET status='rejected' WHERE id=$1", [
+    id,
+  ]);
+
+  res.json({ ok: true });
+});
+
+// -------------------------------
+// PAY XRP
+// -------------------------------
+app.post("/api/pay-xrp", async (req, res) => {
+  const { submissionId } = req.body;
+
+  const payload = {
+    TransactionType: "Payment",
+    Destination: PAYMENT_DEST,
+    Amount: String(5 * 1_000_000), // 5 XRP
+    Memos: [
+      {
+        Memo: {
+          MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
+          MemoData: Buffer.from(String(submissionId)).toString("hex"),
+        },
+      },
+    ],
+  };
+
+  const { uuid, link } = await createXummPayload(payload);
+
+  await pool.query("UPDATE submissions SET payment_uuid=$1 WHERE id=$2", [
+    uuid,
+    submissionId,
+  ]);
+
+  res.json({ uuid, link });
+});
+
+// -------------------------------
+// MARK PAID
+// -------------------------------
+app.post("/api/mark-paid", async (req, res) => {
+  const { id, uuid } = req.body;
+
+  await pool.query(
+    "UPDATE submissions SET payment_status='paid' WHERE id=$1",
+    [id]
+  );
+
+  res.json({ ok: true });
+});
+
+// -------------------------------
+// START MINT
+// -------------------------------
+app.post("/api/start-mint", async (req, res) => {
+  const { id } = req.body;
+
+  const payload = {
+    TransactionType: "NFTokenMint",
+    Flags: 8,
+    URI: "",
+    NFTokenTaxon: 0,
+  };
+
+  const { uuid, link } = await createXummPayload(payload);
+
+  await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [
+    uuid,
+    id,
+  ]);
+
+  res.json({ uuid, link });
+});
+
+// -------------------------------
+// MARK MINTED
+// -------------------------------
+app.post("/api/mark-minted", async (req, res) => {
+  const { id } = req.body;
+
+  await pool.query(
+    "UPDATE submissions SET mint_status='minted' WHERE id=$1",
+    [id]
+  );
+
+  res.json({ ok: true });
+});
 
 // -------------------------------
 // START SERVER
