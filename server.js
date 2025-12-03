@@ -88,10 +88,11 @@ initDB();
 // -------------------------------
 // UTIL — XUMM PAYLOAD
 // -------------------------------
-async function createXummPayload(payload) {
+// ✅ FIX: wrap transaction in { txjson: ... } as required by Xumm
+async function createXummPayload(txjson) {
   const r = await axios.post(
     "https://xumm.app/api/v1/platform/payload",
-    payload,
+    { txjson },
     {
       headers: {
         "X-API-Key": XUMM_API_KEY,
@@ -239,25 +240,17 @@ app.post("/api/pay-xrp", async (req, res) => {
     const { submissionId } = req.body;
 
     const payload = {
-      txjson: {
-        TransactionType: "Payment",
-        Destination: PAYMENT_DEST,
-        Amount: String(5 * 1_000_000),
-        Memos: [
-          {
-            Memo: {
-              MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
-              MemoData: Buffer.from(String(submissionId)).toString("hex"),
-            },
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: String(5 * 1_000_000), // 5 XRP
+      Memos: [
+        {
+          Memo: {
+            MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
+            MemoData: Buffer.from(String(submissionId)).toString("hex"),
           },
-        ],
-      },
-      options: {
-        return_url: {
-          web: CREATOR_PAGE,
-          app: CREATOR_PAGE
-        }
-      }
+        },
+      ],
     };
 
     const { uuid, link } = await createXummPayload(payload);
@@ -291,10 +284,12 @@ app.post("/api/mark-paid", async (req, res) => {
 // -------------------------------
 // START MINT
 // -------------------------------
+// ✅ FIX: build a proper NFTokenMint with a real URI from metadata_cid
 app.post("/api/start-mint", async (req, res) => {
   try {
     const { id } = req.body;
 
+    // Look up submission to get its metadata CID
     const result = await pool.query(
       "SELECT metadata_cid FROM submissions WHERE id=$1",
       [id]
@@ -306,22 +301,15 @@ app.post("/api/start-mint", async (req, res) => {
 
     const metadataCid = result.rows[0].metadata_cid;
 
+    // xrpl expects hex-encoded URI
     const uriString = "ipfs://" + metadataCid;
     const uriHex = Buffer.from(uriString).toString("hex");
 
     const payload = {
-      txjson: {
-        TransactionType: "NFTokenMint",
-        Flags: 8,
-        URI: uriHex,
-        NFTokenTaxon: 0
-      },
-      options: {
-        return_url: {
-          web: CREATOR_PAGE,
-          app: CREATOR_PAGE
-        }
-      }
+      TransactionType: "NFTokenMint",
+      Flags: 8,          // transferable
+      URI: uriHex,       // hex-encoded "ipfs://<cid>"
+      NFTokenTaxon: 0,
     };
 
     const { uuid, link } = await createXummPayload(payload);
