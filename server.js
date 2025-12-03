@@ -38,16 +38,21 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
+// ⭐ FIXED CORS (ONLY CHANGE YOU ASKED FOR)
 app.use(
   cors({
-    origin: [
-      "https://centerforcreators.com",
-      "https://centerforcreators.com/nft-creator",
-      "https://centerforcreators.com/nft-marketplace",
-      "https://centerforcreators.com/nft-creator/admin",
-      "https://centerforcreators.github.io",
-      "https://centerforcreators.github.io/cfc-nft-creator-frontend",
-    ],
+    origin: function (origin, callback) {
+      const allowed = [
+        "https://centerforcreators.com",
+        "https://centerforcreators.github.io"
+      ];
+
+      if (!origin || allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS blocked: " + origin));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   })
