@@ -88,7 +88,7 @@ initDB();
 // -------------------------------
 // UTIL — XUMM PAYLOAD
 // -------------------------------
-// ⭐ FIX: wrap transaction inside { txjson: ... } to satisfy XUMM
+// ✅ FIX: wrap transaction in { txjson: ... } as required by Xumm
 async function createXummPayload(txjson) {
   const r = await axios.post(
     "https://xumm.app/api/v1/platform/payload",
@@ -284,14 +284,31 @@ app.post("/api/mark-paid", async (req, res) => {
 // -------------------------------
 // START MINT
 // -------------------------------
+// ✅ FIX: build a proper NFTokenMint with a real URI from metadata_cid
 app.post("/api/start-mint", async (req, res) => {
   try {
     const { id } = req.body;
 
+    // Look up submission to get its metadata CID
+    const result = await pool.query(
+      "SELECT metadata_cid FROM submissions WHERE id=$1",
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    const metadataCid = result.rows[0].metadata_cid;
+
+    // xrpl expects hex-encoded URI
+    const uriString = "ipfs://" + metadataCid;
+    const uriHex = Buffer.from(uriString).toString("hex");
+
     const payload = {
       TransactionType: "NFTokenMint",
-      Flags: 8,
-      URI: "",
+      Flags: 8,          // transferable
+      URI: uriHex,       // hex-encoded "ipfs://<cid>"
       NFTokenTaxon: 0,
     };
 
