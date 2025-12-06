@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT (FREE MODE)
+// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC
 // ========================================
 
 import express from "express";
@@ -29,6 +29,9 @@ const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
+const MARKETPLACE_BACKEND =
+  "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft";
+
 const PORT = process.env.PORT || 4000;
 
 // -------------------------------
@@ -38,7 +41,6 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
-// ⭐ CORS — allow your two frontends
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -88,7 +90,6 @@ initDB();
 // -------------------------------
 // UTIL — XUMM PAYLOAD
 // -------------------------------
-// ✅ FIX: wrap transaction in { txjson: ... } as required by Xumm
 async function createXummPayload(txjson) {
   const r = await axios.post(
     "https://xumm.app/api/v1/platform/payload",
@@ -102,19 +103,6 @@ async function createXummPayload(txjson) {
     }
   );
   return { uuid: r.data.uuid, link: r.data.next.always };
-}
-
-async function getXummPayload(uuid) {
-  const r = await axios.get(
-    `https://xumm.app/api/v1/platform/payload/${uuid}`,
-    {
-      headers: {
-        "X-API-Key": XUMM_API_KEY,
-        "X-API-Secret": XUMM_API_SECRET,
-      },
-    }
-  );
-  return r.data;
 }
 
 // -------------------------------
@@ -213,7 +201,6 @@ app.post("/api/admin/approve", async (req, res) => {
   await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [
     id,
   ]);
-
   res.json({ ok: true });
 });
 
@@ -242,15 +229,7 @@ app.post("/api/pay-xrp", async (req, res) => {
     const payload = {
       TransactionType: "Payment",
       Destination: PAYMENT_DEST,
-      Amount: String(5 * 1_000_000), // 5 XRP
-      Memos: [
-        {
-          Memo: {
-            MemoType: Buffer.from("CFC_PAYMENT").toString("hex"),
-            MemoData: Buffer.from(String(submissionId)).toString("hex"),
-          },
-        },
-      ],
+      Amount: String(5 * 1_000_000),
     };
 
     const { uuid, link } = await createXummPayload(payload);
@@ -271,7 +250,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 // MARK PAID
 // -------------------------------
 app.post("/api/mark-paid", async (req, res) => {
-  const { id, uuid } = req.body;
+  const { id } = req.body;
 
   await pool.query(
     "UPDATE submissions SET payment_status='paid' WHERE id=$1",
@@ -284,31 +263,26 @@ app.post("/api/mark-paid", async (req, res) => {
 // -------------------------------
 // START MINT
 // -------------------------------
-// ✅ FIX: build a proper NFTokenMint with a real URI from metadata_cid
 app.post("/api/start-mint", async (req, res) => {
   try {
     const { id } = req.body;
 
-    // Look up submission to get its metadata CID
     const result = await pool.query(
       "SELECT metadata_cid FROM submissions WHERE id=$1",
       [id]
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows.length === 0)
       return res.status(404).json({ error: "Submission not found" });
-    }
 
     const metadataCid = result.rows[0].metadata_cid;
 
-    // xrpl expects hex-encoded URI
-    const uriString = "ipfs://" + metadataCid;
-    const uriHex = Buffer.from(uriString).toString("hex");
+    const uriHex = Buffer.from("ipfs://" + metadataCid).toString("hex");
 
     const payload = {
       TransactionType: "NFTokenMint",
-      Flags: 8,          // transferable
-      URI: uriHex,       // hex-encoded "ipfs://<cid>"
+      Flags: 8,
+      URI: uriHex,
       NFTokenTaxon: 0,
     };
 
@@ -321,13 +295,13 @@ app.post("/api/start-mint", async (req, res) => {
 
     res.json({ uuid, link });
   } catch (err) {
-    console.error("START MINT error:", err.response?.data || err.message || err);
+    console.error("START MINT error:", err);
     res.status(500).json({ error: "Failed to create mint payload" });
   }
 });
 
 // -------------------------------
-// MARK MINTED
+// MARK MINTED + SEND TO MARKETPLACE
 // -------------------------------
 app.post("/api/mark-minted", async (req, res) => {
   const { id } = req.body;
@@ -336,6 +310,25 @@ app.post("/api/mark-minted", async (req, res) => {
     "UPDATE submissions SET mint_status='minted' WHERE id=$1",
     [id]
   );
+
+  // Pull full submission record
+  const q = await pool.query("SELECT * FROM submissions WHERE id=$1", [id]);
+  const sub = q.rows[0];
+
+  // Send to Marketplace backend
+  try {
+    await axios.post(MARKETPLACE_BACKEND, {
+      submission_id: sub.id,
+      name: sub.name,
+      image_cid: sub.image_cid,
+      metadata_cid: sub.metadata_cid,
+      price_xrp: sub.price_xrp,
+      price_rlusd: sub.price_rlusd,
+      creator_wallet: sub.creator_wallet,
+    });
+  } catch (e) {
+    console.error("Marketplace sync failed:", e.message);
+  }
 
   res.json({ ok: true });
 });
