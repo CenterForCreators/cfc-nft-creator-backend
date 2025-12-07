@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT
+// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT (RESTORED PAY FLOW)
 // ========================================
 
 import express from "express";
@@ -42,17 +42,14 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
-// ⭐ ONLY FIX: allow null-origin (GoDaddy iframe)
 app.use(
   cors({
     origin: function (origin, callback) {
       const allowed = [
         "https://centerforcreators.com",
         "https://centerforcreators.github.io",
-        null, // ⭐ FIX — required for GoDaddy iframe sandbox
       ];
-
-      if (allowed.includes(origin)) {
+      if (!origin || allowed.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error("CORS blocked: " + origin));
@@ -91,7 +88,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD (with redirect)
+// UTIL — XUMM PAYLOAD (RESTORED FORMAT + REDIRECT)
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
@@ -141,7 +138,6 @@ app.post("/api/upload", async (req, res) => {
 
     res.json({ cid: uploadRes.data.IpfsHash });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -185,7 +181,6 @@ app.post("/api/submit", async (req, res) => {
 
     res.json({ submitted: true, id: result.rows[0].id });
   } catch (err) {
-    console.log(err);
     res.status(500).json({ error: "Submission failed" });
   }
 });
@@ -220,7 +215,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
-// PAY XRP (includes redirect)
+// PAY XRP (RESTORED WORKING FORMAT)
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -241,7 +236,6 @@ app.post("/api/pay-xrp", async (req, res) => {
 
     res.json({ uuid, link });
   } catch (err) {
-    console.error("PAY XRP error:", err);
     res.status(500).json({ error: "Failed to create payment payload" });
   }
 });
@@ -261,7 +255,7 @@ app.post("/api/mark-paid", async (req, res) => {
 });
 
 // -------------------------------
-// START MINT (includes redirect)
+// START MINT (REDIRECT + WORKING FORMAT)
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
   try {
@@ -276,7 +270,6 @@ app.post("/api/start-mint", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
 
     const metadataCid = result.rows[0].metadata_cid;
-
     const uriHex = Buffer.from("ipfs://" + metadataCid).toString("hex");
 
     const payload = {
@@ -295,7 +288,6 @@ app.post("/api/start-mint", async (req, res) => {
 
     res.json({ uuid, link });
   } catch (err) {
-    console.error("START MINT error:", err);
     res.status(500).json({ error: "Failed to create mint payload" });
   }
 });
