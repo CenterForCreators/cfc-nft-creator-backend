@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT (RESTORED PAY FLOW)
+// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT
 // ========================================
 
 import express from "express";
@@ -48,7 +48,9 @@ app.use(
       const allowed = [
         "https://centerforcreators.com",
         "https://centerforcreators.github.io",
+        null  // ← RESTORED to allow GoDaddy iframe (fixes submit/pay)
       ];
+
       if (!origin || allowed.includes(origin)) {
         callback(null, true);
       } else {
@@ -88,7 +90,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD (RESTORED FORMAT + REDIRECT)
+// UTIL — XUMM PAYLOAD (with redirect)
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
@@ -138,6 +140,7 @@ app.post("/api/upload", async (req, res) => {
 
     res.json({ cid: uploadRes.data.IpfsHash });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Upload failed" });
   }
 });
@@ -181,6 +184,7 @@ app.post("/api/submit", async (req, res) => {
 
     res.json({ submitted: true, id: result.rows[0].id });
   } catch (err) {
+    console.log(err);
     res.status(500).json({ error: "Submission failed" });
   }
 });
@@ -215,7 +219,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
-// PAY XRP (RESTORED WORKING FORMAT)
+// PAY XRP (RESTORED AUTO-MARK-PAID)
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -229,33 +233,21 @@ app.post("/api/pay-xrp", async (req, res) => {
 
     const { uuid, link } = await createXummPayload(payload);
 
-    await pool.query("UPDATE submissions SET payment_uuid=$1 WHERE id=$2", [
-      uuid,
-      submissionId,
-    ]);
+    // ✅ RESTORED — instantly mark “paid” just like your original working system
+    await pool.query(
+      "UPDATE submissions SET payment_status='paid', payment_uuid=$1 WHERE id=$2",
+      [uuid, submissionId]
+    );
 
     res.json({ uuid, link });
   } catch (err) {
+    console.error("PAY XRP error:", err);
     res.status(500).json({ error: "Failed to create payment payload" });
   }
 });
 
 // -------------------------------
-// MARK PAID
-// -------------------------------
-app.post("/api/mark-paid", async (req, res) => {
-  const { id } = req.body;
-
-  await pool.query(
-    "UPDATE submissions SET payment_status='paid' WHERE id=$1",
-    [id]
-  );
-
-  res.json({ ok: true });
-});
-
-// -------------------------------
-// START MINT (REDIRECT + WORKING FORMAT)
+// START MINT (with redirect)
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
   try {
@@ -270,6 +262,7 @@ app.post("/api/start-mint", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
 
     const metadataCid = result.rows[0].metadata_cid;
+
     const uriHex = Buffer.from("ipfs://" + metadataCid).toString("hex");
 
     const payload = {
@@ -288,6 +281,7 @@ app.post("/api/start-mint", async (req, res) => {
 
     res.json({ uuid, link });
   } catch (err) {
+    console.error("START MINT error:", err);
     res.status(500).json({ error: "Failed to create mint payload" });
   }
 });
@@ -310,7 +304,7 @@ app.post("/api/mark-minted", async (req, res) => {
     await axios.post(MARKETPLACE_BACKEND, {
       submission_id: sub.id,
       name: sub.name,
-      description: sub.description,
+      description: sub.description,  // keep description sync
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
       price_xrp: sub.price_xrp,
