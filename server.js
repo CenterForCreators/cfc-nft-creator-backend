@@ -1,5 +1,5 @@
 // ========================================
-// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC
+// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT
 // ========================================
 
 import express from "express";
@@ -29,6 +29,7 @@ const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
+
 const MARKETPLACE_BACKEND =
   "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft";
 
@@ -88,12 +89,20 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD
+// UTIL — XUMM PAYLOAD (with redirect)
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
     "https://xumm.app/api/v1/platform/payload",
-    { txjson },
+    {
+      txjson,
+      options: {
+        return_url: {
+          web: CREATOR_PAGE,
+          app: CREATOR_PAGE,
+        },
+      },
+    },
     {
       headers: {
         "X-API-Key": XUMM_API_KEY,
@@ -180,7 +189,7 @@ app.post("/api/submit", async (req, res) => {
 });
 
 // -------------------------------
-// ADMIN — GET ALL SUBMISSIONS
+// ADMIN ROUTES
 // -------------------------------
 app.get("/api/admin/submissions", async (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
@@ -190,37 +199,26 @@ app.get("/api/admin/submissions", async (req, res) => {
   res.json(rows.rows);
 });
 
-// -------------------------------
-// ADMIN — APPROVE
-// -------------------------------
 app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
 
-  await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [
-    id,
-  ]);
+  await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [id]);
   res.json({ ok: true });
 });
 
-// -------------------------------
-// ADMIN — REJECT
-// -------------------------------
 app.post("/api/admin/reject", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
 
-  await pool.query("UPDATE submissions SET status='rejected' WHERE id=$1", [
-    id,
-  ]);
-
+  await pool.query("UPDATE submissions SET status='rejected' WHERE id=$1", [id]);
   res.json({ ok: true });
 });
 
 // -------------------------------
-// PAY XRP
+// PAY XRP (includes redirect)
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -241,7 +239,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 
     res.json({ uuid, link });
   } catch (err) {
-    console.error("PAY XRP error:", err.response?.data || err.message || err);
+    console.error("PAY XRP error:", err);
     res.status(500).json({ error: "Failed to create payment payload" });
   }
 });
@@ -261,7 +259,7 @@ app.post("/api/mark-paid", async (req, res) => {
 });
 
 // -------------------------------
-// START MINT
+// START MINT (includes redirect)
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
   try {
@@ -311,11 +309,9 @@ app.post("/api/mark-minted", async (req, res) => {
     [id]
   );
 
-  // Pull full submission record
   const q = await pool.query("SELECT * FROM submissions WHERE id=$1", [id]);
   const sub = q.rows[0];
 
-  // Send to Marketplace backend
   try {
     await axios.post(MARKETPLACE_BACKEND, {
       submission_id: sub.id,
