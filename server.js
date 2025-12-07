@@ -42,16 +42,17 @@ const app = express();
 app.use(express.json());
 app.use(fileUpload());
 
+// ⭐ ONLY FIX: allow null-origin (GoDaddy iframe)
 app.use(
   cors({
     origin: function (origin, callback) {
       const allowed = [
         "https://centerforcreators.com",
         "https://centerforcreators.github.io",
-        "null"   // ⭐ FIX — ADDED, NOTHING ELSE CHANGED
+        null, // ⭐ FIX — required for GoDaddy iframe sandbox
       ];
 
-      if (!origin || allowed.includes(origin)) {
+      if (allowed.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error("CORS blocked: " + origin));
