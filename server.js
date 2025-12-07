@@ -48,6 +48,7 @@ app.use(
       const allowed = [
         "https://centerforcreators.com",
         "https://centerforcreators.github.io",
+        "null"   // ⭐ FIX — ADDED, NOTHING ELSE CHANGED
       ];
 
       if (!origin || allowed.includes(origin)) {
@@ -316,7 +317,7 @@ app.post("/api/mark-minted", async (req, res) => {
     await axios.post(MARKETPLACE_BACKEND, {
       submission_id: sub.id,
       name: sub.name,
-      description: sub.description,   // ⭐ ADDED — ONLY CHANGE
+      description: sub.description,
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
       price_xrp: sub.price_xrp,
