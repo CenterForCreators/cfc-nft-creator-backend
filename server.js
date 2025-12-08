@@ -1,7 +1,3 @@
-// ========================================
-// CFC NFT CREATOR — PAYMENT + MINT + MARKETPLACE SYNC + REDIRECT
-// ========================================
-
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -48,14 +44,10 @@ app.use(
       const allowed = [
         "https://centerforcreators.com",
         "https://centerforcreators.github.io",
-        null  // ← RESTORED to allow GoDaddy iframe (fixes submit/pay)
+        null
       ];
-
-      if (!origin || allowed.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS blocked: " + origin));
-      }
+      if (!origin || allowed.includes(origin)) callback(null, true);
+      else callback(new Error("CORS blocked: " + origin));
     },
     methods: ["GET", "POST"],
     credentials: true,
@@ -90,7 +82,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD (with redirect)
+// UTIL — XUMM PAYLOAD (redirect-safe)
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
@@ -98,10 +90,7 @@ async function createXummPayload(txjson) {
     {
       txjson,
       options: {
-        return_url: {
-          web: CREATOR_PAGE,
-          app: CREATOR_PAGE,
-        },
+        return_url: { web: CREATOR_PAGE, app: CREATOR_PAGE },
       },
     },
     {
@@ -190,7 +179,7 @@ app.post("/api/submit", async (req, res) => {
 });
 
 // -------------------------------
-// ADMIN ROUTES
+// ADMIN
 // -------------------------------
 app.get("/api/admin/submissions", async (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
@@ -200,6 +189,9 @@ app.get("/api/admin/submissions", async (req, res) => {
   res.json(rows.rows);
 });
 
+// -------------------------------
+// APPROVE / REJECT
+// -------------------------------
 app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD)
@@ -219,7 +211,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
-// PAY XRP (RESTORED AUTO-MARK-PAID)
+// PAY XRP (auto-mark-paid restored)
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -233,7 +225,6 @@ app.post("/api/pay-xrp", async (req, res) => {
 
     const { uuid, link } = await createXummPayload(payload);
 
-    // ✅ RESTORED — instantly mark “paid” just like your original working system
     await pool.query(
       "UPDATE submissions SET payment_status='paid', payment_uuid=$1 WHERE id=$2",
       [uuid, submissionId]
@@ -247,7 +238,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
-// START MINT (with redirect)
+// START MINT
 // -------------------------------
 app.post("/api/start-mint", async (req, res) => {
   try {
@@ -258,11 +249,10 @@ app.post("/api/start-mint", async (req, res) => {
       [id]
     );
 
-    if (result.rows.length === 0)
+    if (!result.rows.length)
       return res.status(404).json({ error: "Submission not found" });
 
     const metadataCid = result.rows[0].metadata_cid;
-
     const uriHex = Buffer.from("ipfs://" + metadataCid).toString("hex");
 
     const payload = {
@@ -301,14 +291,16 @@ app.post("/api/mark-minted", async (req, res) => {
   const sub = q.rows[0];
 
   try {
+    // ✅ Added missing terms + prices (required for marketplace)
     await axios.post(MARKETPLACE_BACKEND, {
       submission_id: sub.id,
       name: sub.name,
-      description: sub.description,  // keep description sync
+      description: sub.description,
+      terms: sub.terms,            // ← ADDED
+      price_xrp: sub.price_xrp,    // ← ADDED
+      price_rlusd: sub.price_rlusd,// ← ADDED
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
-      price_xrp: sub.price_xrp,
-      price_rlusd: sub.price_rlusd,
       creator_wallet: sub.creator_wallet,
     });
   } catch (e) {
