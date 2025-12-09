@@ -89,9 +89,7 @@ async function createXummPayload(txjson) {
     "https://xumm.app/api/v1/platform/payload",
     {
       txjson,
-      options: {
-        return_url: { web: CREATOR_PAGE, app: CREATOR_PAGE },
-      },
+      options: { return_url: { web: CREATOR_PAGE, app: CREATOR_PAGE } },
     },
     {
       headers: {
@@ -211,7 +209,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
-// PAY XRP (auto-mark-paid restored)
+// PAY XRP (auto-mark-paid)
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -291,14 +289,14 @@ app.post("/api/mark-minted", async (req, res) => {
   const sub = q.rows[0];
 
   try {
-    // ✅ Added missing terms + prices (required for marketplace)
     await axios.post(MARKETPLACE_BACKEND, {
       submission_id: sub.id,
       name: sub.name,
       description: sub.description,
-      terms: sub.terms,            // ← ADDED
-      price_xrp: sub.price_xrp,    // ← ADDED
-      price_rlusd: sub.price_rlusd,// ← ADDED
+      terms: sub.terms,               // REQUIRED
+      quantity: sub.batch_qty,        // REQUIRED
+      price_xrp: sub.price_xrp,       // REQUIRED
+      price_rlusd: sub.price_rlusd,   // REQUIRED
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
       creator_wallet: sub.creator_wallet,
