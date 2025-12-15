@@ -75,14 +75,16 @@ async function initDB() {
       mint_uuid TEXT,
       terms TEXT,
       price_xrp TEXT,
-      price_rlusd TEXT
+      price_rlusd TEXT,
+      email TEXT,
+      website TEXT
     );
   `);
 }
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD (redirect-safe)
+// UTIL — XUMM PAYLOAD
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
@@ -133,12 +135,20 @@ app.post("/api/upload", async (req, res) => {
 });
 
 // -------------------------------
-// SUBMIT NFT
+// SUBMIT NFT (UPDATED)
 // -------------------------------
 app.post("/api/submit", async (req, res) => {
   try {
-    const { wallet, name, description, imageCid, metadataCid, quantity } =
-      req.body;
+    const {
+      wallet,
+      name,
+      description,
+      imageCid,
+      metadataCid,
+      quantity,
+      email,
+      website
+    } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
 
@@ -151,8 +161,8 @@ app.post("/api/submit", async (req, res) => {
       INSERT INTO submissions
       (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
        status, payment_status, mint_status, created_at,
-       terms, price_xrp, price_rlusd)
-      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10)
+       terms, price_xrp, price_rlusd, email, website)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12)
       RETURNING id
       `,
       [
@@ -166,12 +176,14 @@ app.post("/api/submit", async (req, res) => {
         terms,
         price_xrp,
         price_rlusd,
+        email,
+        website
       ]
     );
 
     res.json({ submitted: true, id: result.rows[0].id });
   } catch (err) {
-    console.log(err);
+    console.error(err);
     res.status(500).json({ error: "Submission failed" });
   }
 });
@@ -209,7 +221,7 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
-// PAY XRP (auto-mark-paid)
+// PAY XRP
 // -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
   try {
@@ -293,13 +305,15 @@ app.post("/api/mark-minted", async (req, res) => {
       submission_id: sub.id,
       name: sub.name,
       description: sub.description,
-      terms: sub.terms,               // REQUIRED
-      quantity: sub.batch_qty,        // REQUIRED
-      price_xrp: sub.price_xrp,       // REQUIRED
-      price_rlusd: sub.price_rlusd,   // REQUIRED
+      terms: sub.terms,
+      quantity: sub.batch_qty,
+      price_xrp: sub.price_xrp,
+      price_rlusd: sub.price_rlusd,
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
       creator_wallet: sub.creator_wallet,
+      creator_email: sub.email,
+      creator_website: sub.website
     });
   } catch (e) {
     console.error("Marketplace sync failed:", e.message);
