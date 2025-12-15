@@ -77,7 +77,8 @@ async function initDB() {
       price_xrp TEXT,
       price_rlusd TEXT,
       email TEXT,
-      website TEXT
+      website TEXT,
+      rejection_reason TEXT        -- ✅ NEW
     );
   `);
 }
@@ -135,7 +136,7 @@ app.post("/api/upload", async (req, res) => {
 });
 
 // -------------------------------
-// SUBMIT NFT (UPDATED)
+// SUBMIT NFT
 // -------------------------------
 app.post("/api/submit", async (req, res) => {
   try {
@@ -200,23 +201,35 @@ app.get("/api/admin/submissions", async (req, res) => {
 });
 
 // -------------------------------
-// APPROVE / REJECT
+// APPROVE / REJECT (UPDATED)
 // -------------------------------
 app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
 
-  await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [id]);
+  await pool.query(
+    "UPDATE submissions SET status='approved', rejection_reason=NULL WHERE id=$1",
+    [id]
+  );
   res.json({ ok: true });
 });
 
 app.post("/api/admin/reject", async (req, res) => {
-  const { id, password } = req.body;
+  const { id, password, reason } = req.body;
   if (password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
 
-  await pool.query("UPDATE submissions SET status='rejected' WHERE id=$1", [id]);
+  await pool.query(
+    `
+    UPDATE submissions
+    SET status='rejected',
+        rejection_reason=$2
+    WHERE id=$1
+    `,
+    [id, reason || null]
+  );
+
   res.json({ ok: true });
 });
 
@@ -312,15 +325,14 @@ app.post("/api/mark-minted", async (req, res) => {
       image_cid: sub.image_cid,
       metadata_cid: sub.metadata_cid,
       creator_wallet: sub.creator_wallet,
-      creator_email: sub.email,
-      creator_website: sub.website
+      website: sub.website
     });
   } catch (e) {
     console.error("Marketplace sync failed:", e.message);
   }
 
   res.json({ ok: true });
-});
+};
 
 // -------------------------------
 // START SERVER
