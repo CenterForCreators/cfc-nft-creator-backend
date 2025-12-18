@@ -82,6 +82,7 @@ async function initDB() {
     );
   `);
 
+  // ✅ LEARN-TO-EARN TABLES (ADD-ONLY)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS learn_user_progress (
       id SERIAL PRIMARY KEY,
@@ -132,141 +133,312 @@ async function createXummPayload(txjson) {
 }
 
 // -------------------------------
-// LEARN-TO-EARN TRACK
+// ✅ LEARN-TO-EARN TRACK ENDPOINT (ADD-ONLY)
 // -------------------------------
 app.post("/api/learn/track", async (req, res) => {
   try {
     const { wallet, submission_id, action_type, action_ref } = req.body;
-    if (!wallet || !submission_id || !action_type || !action_ref)
-      return res.status(400).json({ error: "Missing fields" });
 
-    const exists = await pool.query(
-      `SELECT 1 FROM learn_user_progress
-       WHERE wallet=$1 AND submission_id=$2 AND action_type=$3 AND action_ref=$4`,
-      [wallet, submission_id, action_type, action_ref]
-    );
-    if (exists.rows.length) return res.json({ ok: true });
+    if (!wallet || !submission_id || !action_type || !action_ref) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
-    await pool.query(
-      `INSERT INTO learn_user_progress (wallet, submission_id, action_type, action_ref)
-       VALUES ($1,$2,$3,$4)`,
+    const existing = await pool.query(
+      `
+      SELECT id FROM learn_user_progress
+      WHERE wallet=$1 AND submission_id=$2 AND action_type=$3 AND action_ref=$4
+      `,
       [wallet, submission_id, action_type, action_ref]
     );
 
+    if (existing.rows.length > 0) {
+      return res.json({ ok: true, already_recorded: true });
+    }
+
     await pool.query(
-      `INSERT INTO learn_rewards_ledger (wallet, submission_id, action_type, action_ref)
-       VALUES ($1,$2,$3,$4)`,
+      `
+      INSERT INTO learn_user_progress
+      (wallet, submission_id, action_type, action_ref)
+      VALUES ($1,$2,$3,$4)
+      `,
+      [wallet, submission_id, action_type, action_ref]
+    );
+
+    await pool.query(
+      `
+      INSERT INTO learn_rewards_ledger
+      (wallet, submission_id, action_type, action_ref, tokens_earned)
+      VALUES ($1,$2,$3,$4,0)
+      `,
       [wallet, submission_id, action_type, action_ref]
     );
 
     res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Learn failed" });
+  } catch (err) {
+    console.error("Learn-to-Earn error:", err);
+    res.status(500).json({ error: "Learn-to-Earn failed" });
   }
 });
 
 // -------------------------------
-// ADMIN — LEARN-TO-EARN VIEW
+// ✅ ADMIN — LEARN-TO-EARN ACTIVITY (ADD-ONLY)
 // -------------------------------
 app.get("/api/admin/learn-activity", async (req, res) => {
-  if (req.query.password !== ADMIN_PASSWORD)
+  if (req.query.password !== ADMIN_PASSWORD) {
     return res.status(403).json({ error: "Unauthorized" });
+  }
 
   const r = await pool.query(`
-    SELECT * FROM learn_rewards_ledger
+    SELECT
+      id,
+      wallet,
+      submission_id,
+      action_type,
+      action_ref,
+      tokens_earned,
+      tokens_paid,
+      tx_hash,
+      created_at
+    FROM learn_rewards_ledger
     ORDER BY created_at DESC
     LIMIT 500
   `);
+
   res.json(r.rows);
 });
 
 // -------------------------------
-// ORIGINAL ROUTES (UNCHANGED)
+// UPLOAD FILE TO PINATA (ORIGINAL WORKING)
 // -------------------------------
 app.post("/api/upload", async (req, res) => {
-  const form = new FormData();
-  form.append("file", req.files.file.data, req.files.file.name);
-  const r = await axios.post(
-    "https://api.pinata.cloud/pinning/pinFileToIPFS",
-    form,
-    { headers: { ...form.getHeaders(), pinata_api_key: PINATA_API_KEY, pinata_secret_api_key: PINATA_API_SECRET } }
-  );
-  res.json({ cid: r.data.IpfsHash });
+  try {
+    const file = req.files?.file;
+    if (!file) return res.status(400).json({ error: "No file" });
+
+    const form = new FormData();
+    form.append("file", file.data, file.name);
+
+    const uploadRes = await axios.post(
+      "https://api.pinata.cloud/pinning/pinFileToIPFS",
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          pinata_api_key: PINATA_API_KEY,
+          pinata_secret_api_key: PINATA_API_SECRET,
+        },
+      }
+    );
+
+    res.json({ cid: uploadRes.data.IpfsHash });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
+// -------------------------------
+// SUBMIT NFT (ORIGINAL WORKING)
+// -------------------------------
 app.post("/api/submit", async (req, res) => {
-  const m = JSON.parse(req.body.metadata || "{}");
-  const r = await pool.query(
-    `INSERT INTO submissions
-     (creator_wallet,name,description,image_cid,metadata_cid,batch_qty,status,payment_status,mint_status,created_at,terms,price_xrp,price_rlusd,email,website)
-     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12)
-     RETURNING id`,
-    [
-      req.body.wallet, req.body.name, req.body.description,
-      req.body.imageCid, req.body.metadataCid, req.body.quantity,
-      new Date().toISOString(), m.terms, m.price_xrp, m.price_rlusd,
-      req.body.email, req.body.website
-    ]
-  );
-  res.json({ submitted: true, id: r.rows[0].id });
+  try {
+    const {
+      wallet,
+      name,
+      description,
+      imageCid,
+      metadataCid,
+      quantity,
+      email,
+      website
+    } = req.body;
+
+    const metadataJSON = JSON.parse(req.body.metadata || "{}");
+
+    const terms = metadataJSON.terms || null;
+    const price_xrp = metadataJSON.price_xrp || null;
+    const price_rlusd = metadataJSON.price_rlusd || null;
+
+    const result = await pool.query(
+      `
+      INSERT INTO submissions
+      (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
+       status, payment_status, mint_status, created_at,
+       terms, price_xrp, price_rlusd, email, website)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12)
+      RETURNING id
+      `,
+      [
+        wallet,
+        name,
+        description,
+        imageCid,
+        metadataCid,
+        quantity,
+        new Date().toISOString(),
+        terms,
+        price_xrp,
+        price_rlusd,
+        email,
+        website
+      ]
+    );
+
+    res.json({ submitted: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Submission failed" });
+  }
 });
 
+// -------------------------------
+// ADMIN (ORIGINAL WORKING)
+// -------------------------------
 app.get("/api/admin/submissions", async (req, res) => {
   if (req.query.password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
-  const r = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
-  res.json(r.rows);
+
+  const rows = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
+  res.json(rows.rows);
 });
 
+// -------------------------------
+// APPROVE / REJECT (ORIGINAL WORKING)
+// -------------------------------
 app.post("/api/admin/approve", async (req, res) => {
-  if (req.body.password !== ADMIN_PASSWORD) return res.sendStatus(403);
-  await pool.query("UPDATE submissions SET status='approved' WHERE id=$1", [req.body.id]);
+  const { id, password } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  await pool.query(
+    "UPDATE submissions SET status='approved', rejection_reason=NULL WHERE id=$1",
+    [id]
+  );
   res.json({ ok: true });
 });
 
 app.post("/api/admin/reject", async (req, res) => {
-  if (req.body.password !== ADMIN_PASSWORD) return res.sendStatus(403);
+  const { id, password, reason } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
   await pool.query(
-    "UPDATE submissions SET status='rejected', rejection_reason=$2 WHERE id=$1",
-    [req.body.id, req.body.reason]
+    `
+    UPDATE submissions
+    SET status='rejected',
+        rejection_reason=$2
+    WHERE id=$1
+    `,
+    [id, reason || null]
   );
+
   res.json({ ok: true });
 });
 
+// -------------------------------
+// PAY XRP (ORIGINAL WORKING)
+// -------------------------------
 app.post("/api/pay-xrp", async (req, res) => {
-  const { uuid, link } = await createXummPayload({
-    TransactionType: "Payment",
-    Destination: PAYMENT_DEST,
-    Amount: String(5_000_000),
-  });
-  await pool.query(
-    "UPDATE submissions SET payment_status='paid', payment_uuid=$1 WHERE id=$2",
-    [uuid, req.body.submissionId]
-  );
-  res.json({ uuid, link });
+  try {
+    const { submissionId } = req.body;
+
+    const payload = {
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: String(5 * 1_000_000),
+    };
+
+    const { uuid, link } = await createXummPayload(payload);
+
+    await pool.query(
+      "UPDATE submissions SET payment_status='paid', payment_uuid=$1 WHERE id=$2",
+      [uuid, submissionId]
+    );
+
+    res.json({ uuid, link });
+  } catch (err) {
+    console.error("PAY XRP error:", err);
+    res.status(500).json({ error: "Failed to create payment payload" });
+  }
 });
 
+// -------------------------------
+// START MINT (ORIGINAL WORKING)
+// -------------------------------
 app.post("/api/start-mint", async (req, res) => {
-  const q = await pool.query("SELECT metadata_cid FROM submissions WHERE id=$1", [req.body.id]);
-  const uriHex = Buffer.from("ipfs://" + q.rows[0].metadata_cid).toString("hex");
-  const { uuid, link } = await createXummPayload({
-    TransactionType: "NFTokenMint",
-    Flags: 8,
-    URI: uriHex,
-    NFTokenTaxon: 0,
-  });
-  await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [uuid, req.body.id]);
-  res.json({ uuid, link });
+  try {
+    const { id } = req.body;
+
+    const result = await pool.query(
+      "SELECT metadata_cid FROM submissions WHERE id=$1",
+      [id]
+    );
+
+    if (!result.rows.length)
+      return res.status(404).json({ error: "Submission not found" });
+
+    const metadataCid = result.rows[0].metadata_cid;
+    const uriHex = Buffer.from("ipfs://" + metadataCid).toString("hex");
+
+    const payload = {
+      TransactionType: "NFTokenMint",
+      Flags: 8,
+      URI: uriHex,
+      NFTokenTaxon: 0,
+    };
+
+    const { uuid, link } = await createXummPayload(payload);
+
+    await pool.query("UPDATE submissions SET mint_uuid=$1 WHERE id=$2", [
+      uuid,
+      id,
+    ]);
+
+    res.json({ uuid, link });
+  } catch (err) {
+    console.error("START MINT error:", err);
+    res.status(500).json({ error: "Failed to create mint payload" });
+  }
 });
 
+// -------------------------------
+// MARK MINTED + SEND TO MARKETPLACE (ORIGINAL WORKING)
+// -------------------------------
 app.post("/api/mark-minted", async (req, res) => {
-  await pool.query("UPDATE submissions SET mint_status='minted' WHERE id=$1", [req.body.id]);
-  const q = await pool.query("SELECT * FROM submissions WHERE id=$1", [req.body.id]);
-  await axios.post(MARKETPLACE_BACKEND, q.rows[0]);
+  const { id } = req.body;
+
+  await pool.query(
+    "UPDATE submissions SET mint_status='minted' WHERE id=$1",
+    [id]
+  );
+
+  const q = await pool.query("SELECT * FROM submissions WHERE id=$1", [id]);
+  const sub = q.rows[0];
+
+  try {
+    await axios.post(MARKETPLACE_BACKEND, {
+      submission_id: sub.id,
+      name: sub.name,
+      description: sub.description,
+      terms: sub.terms,
+      quantity: sub.batch_qty,
+      price_xrp: sub.price_xrp,
+      price_rlusd: sub.price_rlusd,
+      image_cid: sub.image_cid,
+      metadata_cid: sub.metadata_cid,
+      creator_wallet: sub.creator_wallet,
+      website: sub.website
+    });
+  } catch (e) {
+    console.error("Marketplace sync failed:", e.message);
+  }
+
   res.json({ ok: true });
 });
 
+// -------------------------------
+// START SERVER
+// -------------------------------
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
