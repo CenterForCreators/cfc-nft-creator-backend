@@ -82,7 +82,7 @@ async function initDB() {
     );
   `);
 
-  // 🔹 LEARN-TO-EARN (NEW)
+  // 🔹 LEARN-TO-EARN TABLES (ADD-ONLY)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS learn_user_progress (
       id SERIAL PRIMARY KEY,
@@ -133,17 +133,15 @@ async function createXummPayload(txjson) {
 }
 
 // -------------------------------
-// 🔹 LEARN-TO-EARN TRACK ENDPOINT (NEW)
+// 🔹 LEARN-TO-EARN TRACK ENDPOINT
 // -------------------------------
 app.post("/api/learn/track", async (req, res) => {
   try {
     const { wallet, submission_id, action_type, action_ref } = req.body;
-
     if (!wallet || !submission_id || !action_type || !action_ref) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // Prevent duplicate actions
     const existing = await pool.query(
       `
       SELECT id FROM learn_user_progress
@@ -165,7 +163,6 @@ app.post("/api/learn/track", async (req, res) => {
       [wallet, submission_id, action_type, action_ref]
     );
 
-    // Token amount is intentionally 0 for now (you decide later)
     await pool.query(
       `
       INSERT INTO learn_rewards_ledger
@@ -176,17 +173,15 @@ app.post("/api/learn/track", async (req, res) => {
     );
 
     res.json({ ok: true });
-  } catch (err) {
-    console.error("Learn-to-Earn error:", err);
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Learn-to-Earn failed" });
   }
 });
 
 // -------------------------------
-// (EVERYTHING BELOW IS UNCHANGED)
-// -------------------------------
-
 // UPLOAD FILE TO PINATA
+// -------------------------------
 app.post("/api/upload", async (req, res) => {
   try {
     const file = req.files?.file;
@@ -214,25 +209,17 @@ app.post("/api/upload", async (req, res) => {
   }
 });
 
+// -------------------------------
 // SUBMIT NFT
+// -------------------------------
 app.post("/api/submit", async (req, res) => {
   try {
     const {
-      wallet,
-      name,
-      description,
-      imageCid,
-      metadataCid,
-      quantity,
-      email,
-      website
+      wallet, name, description, imageCid,
+      metadataCid, quantity, email, website
     } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
-
-    const terms = metadataJSON.terms || null;
-    const price_xrp = metadataJSON.price_xrp || null;
-    const price_rlusd = metadataJSON.price_rlusd || null;
 
     const result = await pool.query(
       `
@@ -244,30 +231,56 @@ app.post("/api/submit", async (req, res) => {
       RETURNING id
       `,
       [
-        wallet,
-        name,
-        description,
-        imageCid,
-        metadataCid,
-        quantity,
+        wallet, name, description, imageCid, metadataCid, quantity,
         new Date().toISOString(),
-        terms,
-        price_xrp,
-        price_rlusd,
-        email,
-        website
+        metadataJSON.terms || null,
+        metadataJSON.price_xrp || null,
+        metadataJSON.price_rlusd || null,
+        email, website
       ]
     );
 
     res.json({ submitted: true, id: result.rows[0].id });
-  } catch (err) {
-    console.error(err);
+  } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Submission failed" });
   }
 });
 
-// ADMIN / PAY / MINT / MARKETPLACE
-// (unchanged — exactly as you provided)
+// -------------------------------
+// ADMIN ROUTES (UNCHANGED)
+// -------------------------------
+app.get("/api/admin/submissions", async (req, res) => {
+  if (req.query.password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  const rows = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
+  res.json(rows.rows);
+});
+
+app.post("/api/admin/approve", async (req, res) => {
+  const { id, password } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  await pool.query(
+    "UPDATE submissions SET status='approved', rejection_reason=NULL WHERE id=$1",
+    [id]
+  );
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/reject", async (req, res) => {
+  const { id, password, reason } = req.body;
+  if (password !== ADMIN_PASSWORD)
+    return res.status(403).json({ error: "Unauthorized" });
+
+  await pool.query(
+    "UPDATE submissions SET status='rejected', rejection_reason=$2 WHERE id=$1",
+    [id, reason || null]
+  );
+  res.json({ ok: true });
+});
 
 // -------------------------------
 app.listen(PORT, () => {
