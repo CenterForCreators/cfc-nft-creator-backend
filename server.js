@@ -283,6 +283,32 @@ app.post("/api/admin/reject", async (req, res) => {
 });
 
 // -------------------------------
+// -------------------------------
+// ADMIN — LEARN-TO-EARN ACTIVITY
+// -------------------------------
+app.get("/api/admin/learn-activity", async (req, res) => {
+  if (req.query.password !== ADMIN_PASSWORD) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  const r = await pool.query(`
+    SELECT
+      id,
+      wallet,
+      submission_id,
+      action_type,
+      action_ref,
+      tokens_earned,
+      tokens_paid,
+      created_at
+    FROM learn_rewards_ledger
+    ORDER BY created_at DESC
+    LIMIT 500
+  `);
+
+  res.json(r.rows);
+});
+
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
