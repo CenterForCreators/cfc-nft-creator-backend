@@ -164,14 +164,32 @@ app.post("/api/learn/track", async (req, res) => {
       [wallet, submission_id, action_type, action_ref]
     );
 
-    await pool.query(
-      `
-      INSERT INTO learn_rewards_ledger
-      (wallet, submission_id, action_type, action_ref, tokens_earned)
-      VALUES ($1,$2,$3,$4,0)
-      `,
-      [wallet, submission_id, action_type, action_ref]
-    );
+    // -------------------------------
+// LEARN-TO-EARN REWARD LOGIC
+// -------------------------------
+let tokensEarned = 0;
+
+if (action_type === "read") tokensEarned = 1;
+if (action_type === "complete") tokensEarned = 5;
+if (action_type === "workshop") tokensEarned = 10;
+
+// -------------------------------
+// RECORD REWARD
+// -------------------------------
+await pool.query(
+  `
+  INSERT INTO learn_rewards_ledger
+  (wallet, submission_id, action_type, action_ref, tokens_earned)
+  VALUES ($1,$2,$3,$4,$5)
+  `,
+  [
+    wallet,
+    submission_id,
+    action_type,
+    action_ref,
+    tokensEarned
+  ]
+);
 
     res.json({ ok: true });
   } catch (e) {
