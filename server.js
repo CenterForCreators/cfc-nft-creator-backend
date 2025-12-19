@@ -303,6 +303,49 @@ app.post("/api/admin/reject", async (req, res) => {
   );
   res.json({ ok: true });
 });
+// -------------------------------
+// STEP 5 — PAY OUT UNPAID CFC REWARDS
+// -------------------------------
+app.post("/api/admin/payout-learn-rewards", async (req, res) => {
+  try {
+    if (req.body.password !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    // Get unpaid rewards
+    const rewards = await pool.query(`
+      SELECT *
+      FROM learn_rewards_ledger
+      WHERE tokens_earned > tokens_paid
+      ORDER BY created_at ASC
+      LIMIT 50
+    `);
+
+    let paidCount = 0;
+
+    for (const r of rewards.rows) {
+      const amount = r.tokens_earned - r.tokens_paid;
+      if (amount <= 0) continue;
+
+      // ⚠️ PLACEHOLDER — actual XRPL send happens later
+      await pool.query(
+        `
+        UPDATE learn_rewards_ledger
+        SET tokens_paid = tokens_earned
+        WHERE id = $1
+        `,
+        [r.id]
+      );
+
+      paidCount++;
+    }
+
+    res.json({ ok: true, paid: paidCount });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Payout failed" });
+  }
+});
 
 // -------------------------------
 app.listen(PORT, () => {
