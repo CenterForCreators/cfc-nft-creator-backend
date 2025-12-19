@@ -112,7 +112,7 @@ async function initDB() {
 initDB();
 
 // -------------------------------
-// UTIL — XUMM PAYLOAD
+// UTIL — XUMM PAYLOAD (ORIGINAL)
 // -------------------------------
 async function createXummPayload(txjson) {
   const r = await axios.post(
@@ -133,7 +133,7 @@ async function createXummPayload(txjson) {
 }
 
 // -------------------------------
-// ✅ LEARN-TO-EARN TRACK ENDPOINT (ADD-ONLY)
+// ✅ LEARN-TO-EARN TRACK (ADD-ONLY)
 // -------------------------------
 app.post("/api/learn/track", async (req, res) => {
   try {
@@ -164,6 +164,7 @@ app.post("/api/learn/track", async (req, res) => {
       [wallet, submission_id, action_type, action_ref]
     );
 
+    // tokens_earned intentionally 0 for now (you decide later)
     await pool.query(
       `
       INSERT INTO learn_rewards_ledger
