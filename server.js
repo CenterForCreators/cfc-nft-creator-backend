@@ -163,36 +163,68 @@ app.post("/api/learn/track", async (req, res) => {
       [wallet, submission_id, action_type, action_ref]
     );
 
-    // -------------------------------
-    // LEARN-TO-EARN REWARD LOGIC
-    // -------------------------------
-    let tokensEarned = 0;
+  // -------------------------------
+// LEARN-TO-EARN REWARD LOGIC
+// STEP 6 — CREATOR METADATA AWARE
+// -------------------------------
 
-    // ✅ UPDATED VALUES (ONLY CHANGE)
-    if (action_type === "read") tokensEarned = 10;
-    if (action_type === "activity") tokensEarned = 20;
+let tokensEarned = 0;
 
-    // (everything else stays EXACTLY as you had it)
-    if (action_type === "complete") tokensEarned = 5;
-    if (action_type === "workshop") tokensEarned = 10;
+// Default rewards (backwards compatible)
+const DEFAULT_REWARDS = {
+  read: 10,       // page read (after 60s)
+  activity: 20    // book / workshop activity
+};
 
-    // -------------------------------
-    // RECORD REWARD
-    // -------------------------------
-    await pool.query(
-      `
-      INSERT INTO learn_rewards_ledger
-      (wallet, submission_id, action_type, action_ref, tokens_earned)
-      VALUES ($1,$2,$3,$4,$5)
-      `,
-      [
-        wallet,
-        submission_id,
-        action_type,
-        action_ref,
-        tokensEarned
-      ]
+try {
+  // Load submission metadata
+  const meta = await pool.query(
+    "SELECT metadata_cid FROM submissions WHERE id=$1",
+    [submission_id]
+  );
+
+  if (meta.rows.length) {
+    const cid = meta.rows[0].metadata_cid;
+
+    const r = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
+      { timeout: 4000 }
     );
+
+    const learnRules = r.data?.learn;
+
+    // If creator defined learn rules, use them
+    if (learnRules && typeof learnRules[action_type] === "number") {
+      tokensEarned = learnRules[action_type];
+    }
+  }
+} catch {
+  // Silent fallback
+}
+
+// Fallback to defaults if nothing set
+if (tokensEarned === 0) {
+  tokensEarned = DEFAULT_REWARDS[action_type] || 0;
+}
+
+// -------------------------------
+// RECORD REWARD
+// -------------------------------
+await pool.query(
+  `
+  INSERT INTO learn_rewards_ledger
+  (wallet, submission_id, action_type, action_ref, tokens_earned)
+  VALUES ($1,$2,$3,$4,$5)
+  `,
+  [
+    wallet,
+    submission_id,
+    action_type,
+    action_ref,
+    tokensEarned
+  ]
+);
+
 
     res.json({ ok: true });
   } catch (e) {
