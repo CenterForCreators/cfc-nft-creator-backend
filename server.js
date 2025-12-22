@@ -275,6 +275,13 @@ app.post("/api/submit", async (req, res) => {
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
 
+// -------------------------------
+// LEARN-TO-EARN SAFETY (NO CHANGE)
+// -------------------------------
+if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
+    delete metadataJSON.learn;
+}
+
     const result = await pool.query(
       `
       INSERT INTO submissions
