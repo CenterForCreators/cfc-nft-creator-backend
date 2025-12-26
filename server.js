@@ -30,6 +30,11 @@ const MARKETPLACE_BACKEND =
   "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft";
 
 const PORT = process.env.PORT || 4000;
+const XRPL_NETWORK = process.env.XRPL_NETWORK || "wss://s2.ripple.com";
+const CFC_DISTRIBUTOR_SEED = process.env.CFC_DISTRIBUTOR_SEED;
+const CFC_ISSUER = process.env.CFC_ISSUER;
+const CFC_CURRENCY = "CFC";
+
 
 // -------------------------------
 // APP INIT
@@ -307,6 +312,35 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
     res.status(500).json({ error: "Submission failed" });
   }
 });
+async function sendCfcReward({ destination, amount }) {
+  const client = new xrpl.Client(XRPL_NETWORK);
+  await client.connect();
+
+  const wallet = xrpl.Wallet.fromSeed(CFC_DISTRIBUTOR_SEED);
+
+  const tx = {
+    TransactionType: "Payment",
+    Account: wallet.classicAddress,
+    Destination: destination,
+    Amount: {
+      currency: CFC_CURRENCY,
+      issuer: CFC_ISSUER,
+      value: String(amount)
+    }
+  };
+
+  const prepared = await client.autofill(tx);
+  const signed = wallet.sign(prepared);
+  const result = await client.submitAndWait(signed.tx_blob);
+
+  await client.disconnect();
+
+  if (result.result.meta.TransactionResult !== "tesSUCCESS") {
+    throw new Error("XRPL payment failed");
+  }
+
+  return result.result.hash;
+}
 
 // -------------------------------
 // ADMIN ROUTES (UNCHANGED)
@@ -365,21 +399,25 @@ app.post("/api/admin/payout-learn-rewards", async (req, res) => {
     for (const r of rewards.rows) {
       const amount = r.tokens_earned - r.tokens_paid;
       if (amount <= 0) continue;
+const txHash = await sendCfcReward({
+  destination: r.wallet,
+  amount
+});
 
-      // ⚠️ PLACEHOLDER — actual XRPL send happens later
-      await pool.query(
-        `
-        UPDATE learn_rewards_ledger
-        SET tokens_paid = tokens_earned
-        WHERE id = $1
-        `,
-        [r.id]
-      );
-
+await pool.query(
+  `
+  UPDATE learn_rewards_ledger
+  SET tokens_paid = tokens_earned,
+      tx_hash = $2
+  WHERE id = $1
+  `,
+  [r.id, txHash]
+);
       paidCount++;
     }
 
     res.json({ ok: true, paid: paidCount });
+
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Payout failed" });
