@@ -24,6 +24,9 @@ const XUMM_API_KEY = process.env.XUMM_API_KEY;
 const XUMM_API_SECRET = process.env.XUMM_API_SECRET;
 
 const PAYMENT_DEST = "rU15yYD3cHmNXGxHJSJGoLUSogxZ17FpKd";
+const PLATFORM_FEE_PERCENT = 0.05;
+const CREATOR_PERCENT = 0.95;
+
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
 
 const MARKETPLACE_BACKEND =
