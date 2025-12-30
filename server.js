@@ -1,3 +1,4 @@
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -470,17 +471,7 @@ app.post("/api/pay-xrp", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-   const payload = await createXummPayload({
-  TransactionType: "Payment",
-  Destination: PAYMENT_DEST,
-  Amount: xrpl.xrpToDrops("1"),
-  custom_meta: {
-    blob: {
-      submissionId
-    }
-  }
-});
-
+    const payload = await createXummPayload({
       TransactionType: "Payment",
       Destination: PAYMENT_DEST,
       Amount: xrpl.xrpToDrops("1") // ✅ 1 XRP mint fee
@@ -495,35 +486,6 @@ app.post("/api/pay-xrp", async (req, res) => {
   } catch (e) {
     console.error("Mint fee payment error:", e);
     res.status(500).json({ error: "Failed to create mint payment" });
-  }
-});
-
-// -------------------------------
-// XUMM PAYMENT WEBHOOK (MINT FEE)
-// -------------------------------
-app.post("/api/xumm/webhook", async (req, res) => {
-  try {
-    const payload = req.body?.payload;
-
-    if (
-      payload?.response?.dispatched_result !== "tesSUCCESS" ||
-      payload?.meta?.signed !== true
-    ) {
-      return res.json({ ok: true });
-    }
-
-    const submissionId = payload?.custom_meta?.blob?.submissionId;
-    if (!submissionId) return res.json({ ok: true });
-
-    await pool.query(
-      "UPDATE submissions SET payment_status='paid' WHERE id=$1",
-      [submissionId]
-    );
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error("Webhook error:", e);
-    res.status(500).json({ error: "Webhook failed" });
   }
 });
 
