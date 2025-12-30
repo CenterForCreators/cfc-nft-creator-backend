@@ -86,7 +86,8 @@ async function initDB() {
       price_rlusd TEXT,
       email TEXT,
       website TEXT,
-      rejection_reason TEXT
+      rejection_reason TEXT,
+      is_delisted BOOLEAN DEFAULT false
     );
   `);
 
@@ -379,6 +380,29 @@ app.post("/api/admin/reject", async (req, res) => {
   );
   res.json({ ok: true });
 });
+// -------------------------------
+// DELIST / RELIST (CREATOR)
+// -------------------------------
+app.post("/api/toggle-delist", async (req, res) => {
+  try {
+    const { submission_id, delist } = req.body;
+
+    if (typeof submission_id !== "number") {
+      return res.status(400).json({ error: "Invalid submission id" });
+    }
+
+    await pool.query(
+      "UPDATE submissions SET is_delisted=$1 WHERE id=$2",
+      [!!delist, submission_id]
+    );
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Delist toggle failed" });
+  }
+});
+
 // -------------------------------
 // STEP 5 — PAY OUT UNPAID CFC REWARDS
 // -------------------------------
