@@ -450,6 +450,43 @@ await pool.query(
     res.status(500).json({ error: "Payout failed" });
   }
 });
+// -------------------------------
+// PAY 1 XRP MINT FEE (CREATOR)
+// -------------------------------
+app.post("/api/pay-xrp", async (req, res) => {
+  try {
+    const { submissionId } = req.body;
+
+    if (!submissionId) {
+      return res.status(400).json({ error: "Missing submissionId" });
+    }
+
+    const r = await pool.query(
+      "SELECT creator_wallet FROM submissions WHERE id=$1",
+      [submissionId]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    const payload = await createXummPayload({
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: xrpl.xrpToDrops("1") // ✅ 1 XRP mint fee
+    });
+
+    await pool.query(
+      "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
+      [payload.uuid, submissionId]
+    );
+
+    res.json(payload);
+  } catch (e) {
+    console.error("Mint fee payment error:", e);
+    res.status(500).json({ error: "Failed to create mint payment" });
+  }
+});
 
 // -------------------------------
 app.listen(PORT, () => {
