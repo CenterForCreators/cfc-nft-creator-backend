@@ -551,6 +551,50 @@ app.post("/api/mark-minted", async (req, res) => {
     res.status(500).json({ error: "Failed to mark minted" });
   }
 });
+// -------------------------------
+// START NFT MINT (CREATOR)
+// -------------------------------
+app.post("/api/start-mint", async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "Missing submission id" });
+    }
+
+    const r = await pool.query(
+      `
+      SELECT creator_wallet, metadata_cid
+      FROM submissions
+      WHERE id=$1 AND payment_status='paid'
+      `,
+      [id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not ready for mint" });
+    }
+
+    const payload = await createXummPayload({
+      TransactionType: "NFTokenMint",
+      Account: r.rows[0].creator_wallet,
+      URI: xrpl.convertStringToHex(
+        `ipfs://${r.rows[0].metadata_cid}`
+      ),
+      Flags: 8,
+      NFTokenTaxon: 0
+    });
+
+    await pool.query(
+      "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
+      [payload.uuid, id]
+    );
+
+    res.json(payload);
+  } catch (e) {
+    console.error("start-mint error:", e);
+    res.status(500).json({ error: "Failed to start mint" });
+  }
+});
 
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
