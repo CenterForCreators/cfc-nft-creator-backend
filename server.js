@@ -490,6 +490,68 @@ app.post("/api/pay-xrp", async (req, res) => {
 });
 
 // -------------------------------
+// -------------------------------
+// MARK PAID AFTER XAMAN PAYMENT
+// -------------------------------
+app.post("/api/mark-paid", async (req, res) => {
+  try {
+    const { id, uuid } = req.body;
+    if (!id || !uuid) {
+      return res.status(400).json({ error: "Missing id or uuid" });
+    }
+
+    const r = await pool.query(
+      `
+      UPDATE submissions
+      SET payment_status='paid'
+      WHERE id=$1 AND payment_uuid=$2
+      RETURNING id
+      `,
+      [id, uuid]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not found or already paid" });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("mark-paid error:", e);
+    res.status(500).json({ error: "Failed to mark paid" });
+  }
+});
+
+// -------------------------------
+// MARK MINTED AFTER XAMAN MINT
+// -------------------------------
+app.post("/api/mark-minted", async (req, res) => {
+  try {
+    const { id, uuid } = req.body;
+    if (!id || !uuid) {
+      return res.status(400).json({ error: "Missing id or uuid" });
+    }
+
+    const r = await pool.query(
+      `
+      UPDATE submissions
+      SET mint_status='minted'
+      WHERE id=$1
+      RETURNING *
+      `,
+      [id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("mark-minted error:", e);
+    res.status(500).json({ error: "Failed to mark minted" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
