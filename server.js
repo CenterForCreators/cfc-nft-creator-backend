@@ -531,21 +531,37 @@ app.post("/api/mark-minted", async (req, res) => {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
 
-    const r = await pool.query(
-      `
-      UPDATE submissions
-      SET mint_status='minted'
-      WHERE id=$1
-      RETURNING *
-      `,
-      [id]
-    );
+   const r = await pool.query(
+  `
+  UPDATE submissions
+  SET mint_status='minted'
+  WHERE id=$1
+  RETURNING *
+  `,
+  [id]
+);
 
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "Submission not found" });
-    }
+if (!r.rows.length) {
+  return res.status(404).json({ error: "Submission not found" });
+}
 
-    res.json({ ok: true });
+// ADD TO MARKETPLACE AFTER MINT (CORRECT PLACE)
+await axios.post(MARKETPLACE_BACKEND, {
+  submission_id: r.rows[0].id,
+  name: r.rows[0].name,
+  description: r.rows[0].description,
+  image_cid: r.rows[0].image_cid,
+  metadata_cid: r.rows[0].metadata_cid,
+  price_xrp: r.rows[0].price_xrp,
+  price_rlusd: r.rows[0].price_rlusd,
+  creator_wallet: r.rows[0].creator_wallet,
+  terms: r.rows[0].terms,
+  website: r.rows[0].website,
+  quantity: r.rows[0].batch_qty
+});
+
+res.json({ ok: true });
+
   } catch (e) {
     console.error("mark-minted error:", e);
     res.status(500).json({ error: "Failed to mark minted" });
