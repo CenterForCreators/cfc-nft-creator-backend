@@ -545,27 +545,30 @@ app.post("/api/mark-minted", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-    // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING)
-    await axios.post(MARKETPLACE_BACKEND, {
-      submission_id: r.rows[0].id,
-      name: r.rows[0].name,
-      description: r.rows[0].description,
-      category: "all",
-      image_cid: r.rows[0].image_cid,
-      metadata_cid: r.rows[0].metadata_cid,
-      price_xrp: r.rows[0].price_xrp,
-      price_rlusd: r.rows[0].price_rlusd,
-      creator_wallet: r.rows[0].creator_wallet,
-      terms: r.rows[0].terms,
-      website: r.rows[0].website,
-      quantity: r.rows[0].batch_qty
-    });
+  // ADD TO MARKETPLACE AFTER MINT (PROOF LOGS)
+try {
+  console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
 
-    res.json({ ok: true });
+  const resp = await axios.post(MARKETPLACE_BACKEND, {
+    submission_id: r.rows[0].id,
+    name: r.rows[0].name,
+    description: r.rows[0].description,
+    category: "all",
+    image_cid: r.rows[0].image_cid,
+    metadata_cid: r.rows[0].metadata_cid,
+    price_xrp: r.rows[0].price_xrp,
+    price_rlusd: r.rows[0].price_rlusd,
+    creator_wallet: r.rows[0].creator_wallet,
+    terms: r.rows[0].terms,
+    website: r.rows[0].website,
+    quantity: r.rows[0].batch_qty
+  });
 
-  } catch (e) {
-    console.error("mark-minted error:", e);
-    res.status(500).json({ error: "Failed to mark minted" });
+  console.log("✅ Marketplace response:", resp.data);
+} catch (err) {
+  console.error("❌ Marketplace insert failed:", err.message);
+}
+
   }
 });
 
