@@ -544,7 +544,6 @@ app.post("/api/mark-minted", async (req, res) => {
 if (!r.rows.length) {
   return res.status(404).json({ error: "Submission not found" });
 }
-
 // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING)
 try {
   await axios.post(MARKETPLACE_BACKEND, {
