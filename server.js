@@ -553,7 +553,7 @@ try {
     submission_id: r.rows[0].id,
     name: r.rows[0].name,
     description: r.rows[0].description,
-    category: "all",
+    category: r.rows[0].category || "all",
     image_cid: r.rows[0].image_cid,
     metadata_cid: r.rows[0].metadata_cid,
     price_xrp: r.rows[0].price_xrp,
