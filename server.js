@@ -561,7 +561,7 @@ try {
     creator_wallet: r.rows[0].creator_wallet,
     terms: r.rows[0].terms,
     website: r.rows[0].website,
-    quantity: r.rows[0].batch_qty
+   quantity: Number(r.rows[0].batch_qty) || 1
   });
 
   console.log("✅ Marketplace response:", resp.data);
