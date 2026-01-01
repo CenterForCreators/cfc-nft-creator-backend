@@ -357,6 +357,28 @@ app.get("/api/admin/submissions", async (req, res) => {
   const rows = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
   res.json(rows.rows);
 });
+// -------------------------------
+// LEARN-TO-EARN ADMIN ACTIVITY (READ-ONLY)
+// -------------------------------
+app.get("/api/admin/learn-activity", async (req, res) => {
+  try {
+    if (req.query.password !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    const r = await pool.query(`
+      SELECT *
+      FROM learn_rewards_ledger
+      ORDER BY created_at DESC
+      LIMIT 200
+    `);
+
+    res.json(r.rows);
+  } catch (e) {
+    console.error("learn-activity error:", e);
+    res.status(500).json({ error: "Failed to load learn activity" });
+  }
+});
 
 app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
