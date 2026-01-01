@@ -545,30 +545,58 @@ app.post("/api/mark-minted", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-  // ADD TO MARKETPLACE AFTER MINT (PROOF LOGS)
-try {
-  console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
+// -------------------------------
+// MARK MINTED AFTER XAMAN MINT
+// -------------------------------
+app.post("/api/mark-minted", async (req, res) => {
+  try {
+    const { id, uuid } = req.body;
+    if (!id || !uuid) {
+      return res.status(400).json({ error: "Missing id or uuid" });
+    }
 
-  const resp = await axios.post(MARKETPLACE_BACKEND, {
-    submission_id: r.rows[0].id,
-    name: r.rows[0].name,
-    description: r.rows[0].description,
-    category: r.rows[0].category || "all",
-    image_cid: r.rows[0].image_cid,
-    metadata_cid: r.rows[0].metadata_cid,
-    price_xrp: r.rows[0].price_xrp,
-    price_rlusd: r.rows[0].price_rlusd,
-    creator_wallet: r.rows[0].creator_wallet,
-    terms: r.rows[0].terms,
-    website: r.rows[0].website,
-   quantity: Number(r.rows[0].batch_qty) || 1
-  });
+    const r = await pool.query(
+      `
+      UPDATE submissions
+      SET mint_status='minted'
+      WHERE id=$1
+      RETURNING *
+      `,
+      [id]
+    );
 
-  console.log("✅ Marketplace response:", resp.data);
-} catch (err) {
-  console.error("❌ Marketplace insert failed:", err.message);
-}
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
 
+    // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + PROOF LOGS)
+    try {
+      console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
+
+      const resp = await axios.post(MARKETPLACE_BACKEND, {
+        submission_id: r.rows[0].id,
+        name: r.rows[0].name,
+        description: r.rows[0].description,
+        category: r.rows[0].category || "all",
+        image_cid: r.rows[0].image_cid,
+        metadata_cid: r.rows[0].metadata_cid,
+        price_xrp: r.rows[0].price_xrp,
+        price_rlusd: r.rows[0].price_rlusd,
+        creator_wallet: r.rows[0].creator_wallet,
+        terms: r.rows[0].terms,
+        website: r.rows[0].website,
+        quantity: Number(r.rows[0].batch_qty) || 1
+      });
+
+      console.log("✅ Marketplace response:", resp.data);
+    } catch (err) {
+      console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
+    }
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("mark-minted error:", e);
+    return res.status(500).json({ error: "Failed to mark minted" });
   }
 });
 
