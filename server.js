@@ -494,7 +494,6 @@ app.post("/api/pay-xrp", async (req, res) => {
     }
 const payload = await createXummPayload({
   TransactionType: "Payment",
-  Account: r.rows[0].creator_wallet, // ✅ required to fix ledger sequence error
   Destination: PAYMENT_DEST,
   Amount: xrpl.xrpToDrops("1") // ✅ 1 XRP mint fee
 });
