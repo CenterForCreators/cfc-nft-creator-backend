@@ -31,8 +31,7 @@ const CREATOR_PERCENT = 0.95;
 const CREATOR_PAGE = "https://centerforcreators.com/nft-creator";
 
 const MARKETPLACE_BACKEND =
-  "https://cfc-nft-shared-mint-backend.onrender.com/api/market/add-nft";
-
+  "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft";
 
 const PORT = process.env.PORT || 4000;
 const XRPL_NETWORK = process.env.XRPL_NETWORK || "wss://s2.ripple.com";
