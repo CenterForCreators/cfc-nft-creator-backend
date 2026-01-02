@@ -562,6 +562,10 @@ app.post("/api/mark-minted", async (req, res) => {
       `,
       [id]
     );
+// ⛔ stop duplicate marketplace inserts
+if (r.rows[0].sent_to_marketplace) {
+  return res.json({ ok: true });
+}
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
@@ -584,8 +588,13 @@ app.post("/api/mark-minted", async (req, res) => {
         terms: r.rows[0].terms || "",
         website: r.rows[0].website || "",
         quantity: Number(r.rows[0].batch_qty) || 1
-      });
 
+      });
+      
+       await pool.query(
+  "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+  [r.rows[0].id]
+);
       console.log("✅ Marketplace response:", resp.data);
     } catch (err) {
       console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
