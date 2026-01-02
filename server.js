@@ -561,10 +561,6 @@ app.post("/api/mark-minted", async (req, res) => {
       `,
       [id]
     );
-// ⛔ stop duplicate marketplace inserts
-if (r.rows[0].sent_to_marketplace) {
-  return res.json({ ok: true });
-}
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
