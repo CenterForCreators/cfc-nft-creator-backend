@@ -701,32 +701,8 @@ app.post("/api/start-mint", async (req, res) => {
         NFTokenTaxon: 0
       });
 
-      await pool.query(
-        "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
-        [payload.uuid, id]
-      );
-    }
+         res.json({ ok: true, minted: qty });
 
-    res.json({ ok: true, minted: qty });
-
-  } catch (e) {
-    console.error("start-mint error:", e);
-    res.status(500).json({ error: "Failed to start mint" });
-  }
-});
-
-  await pool.query(
-    "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
-    [payload.uuid, id]
-  );
-}
-
-    await pool.query(
-      "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
-      [payload.uuid, id]
-    );
-
-    res.json(payload);
   } catch (e) {
     console.error("start-mint error:", e);
     res.status(500).json({ error: "Failed to start mint" });
