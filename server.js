@@ -484,10 +484,10 @@ app.post("/api/pay-xrp", async (req, res) => {
       return res.status(400).json({ error: "Missing submissionId" });
     }
 
-    const r = await pool.query(
-      "SELECT creator_wallet FROM submissions WHERE id=$1",
-      [submissionId]
-    );
+   const r = await pool.query(
+  "SELECT creator_wallet, batch_qty FROM submissions WHERE id=$1",
+  [submissionId]
+);
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
@@ -495,7 +495,7 @@ app.post("/api/pay-xrp", async (req, res) => {
 const payload = await createXummPayload({
   TransactionType: "Payment",
   Destination: PAYMENT_DEST,
-  Amount: xrpl.xrpToDrops("1") // ✅ 1 XRP mint fee
+  Amount: xrpl.xrpToDrops(String(r.rows[0].batch_qty || 1))
 });
 
     await pool.query(
