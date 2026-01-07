@@ -548,6 +548,46 @@ app.post("/api/mark-paid", async (req, res) => {
 app.post("/api/mark-minted", async (req, res) => {
   try {
     const { id, uuid } = req.body;
+    // 🔹 FETCH NFTokenID FROM XRPL (ADD-ONLY)
+const client = new xrpl.Client(XRPL_NETWORK);
+await client.connect();
+
+const payloadRes = await axios.get(
+  `https://xumm.app/api/v1/platform/payload/${uuid}`,
+  {
+    headers: {
+      "X-API-Key": XUMM_API_KEY,
+      "X-API-Secret": XUMM_API_SECRET
+    }
+  }
+);
+
+const txid = payloadRes.data?.response?.txid;
+
+if (txid) {
+  const tx = await client.request({
+    command: "tx",
+    transaction: txid,
+    binary: false
+  });
+
+  const createdNode = tx.result.meta.AffectedNodes.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
+  );
+
+  const nftoken_id =
+    createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID;
+
+  if (nftoken_id) {
+    await pool.query(
+      "UPDATE submissions SET nftoken_id=$1 WHERE id=$2",
+      [nftoken_id, id]
+    );
+  }
+}
+
+await client.disconnect();
+
     if (!id || !uuid) {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
@@ -599,6 +639,28 @@ app.post("/api/mark-minted", async (req, res) => {
   } catch (e) {
     console.error("mark-minted error:", e);
     return res.status(500).json({ error: "Failed to mark minted" });
+  }
+});
+// -------------------------------
+// SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
+// -------------------------------
+app.post("/api/set-regular-key", async (req, res) => {
+  try {
+    const { wallet } = req.body;
+    if (!wallet) {
+      return res.status(400).json({ error: "Missing wallet" });
+    }
+
+    const payload = await createXummPayload({
+      TransactionType: "SetRegularKey",
+      Account: wallet,
+      RegularKey: process.env.MARKETPLACE_REGULAR_KEY
+    });
+
+    res.json(payload);
+  } catch (e) {
+    console.error("set-regular-key error:", e);
+    res.status(500).json({ error: "Failed to set regular key" });
   }
 });
 
