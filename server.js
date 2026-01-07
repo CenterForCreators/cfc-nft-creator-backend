@@ -622,8 +622,8 @@ await client.disconnect();
         creator_wallet: r.rows[0].creator_wallet,
         terms: r.rows[0].terms || "",
         website: r.rows[0].website || "",
-        quantity: Number(r.rows[0].batch_qty) || 1
-
+       quantity: 1
+        
       });
       
        await pool.query(
