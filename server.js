@@ -664,7 +664,6 @@ app.post("/api/set-regular-key", async (req, res) => {
   }
 });
 
-
 // -------------------------------
 // START NFT MINT (CREATOR)
 // -------------------------------
@@ -691,24 +690,21 @@ app.post("/api/start-mint", async (req, res) => {
     const qty = Number(r.rows[0].batch_qty || 1);
 
     for (let i = 0; i < qty; i++) {
-      const payload = await createXummPayload({
+      await createXummPayload({
         TransactionType: "NFTokenMint",
         Account: r.rows[0].creator_wallet,
-        URI: xrpl.convertStringToHex(
-          `ipfs://${r.rows[0].metadata_cid}`
-        ),
+        URI: xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`),
         Flags: 8,
         NFTokenTaxon: 0
       });
+    }
 
-         res.json({ ok: true, minted: qty });
+    return res.json({ ok: true, minted: qty });
 
   } catch (e) {
     console.error("start-mint error:", e);
-    res.status(500).json({ error: "Failed to start mint" });
+    return res.status(500).json({ error: "Failed to start mint" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log("CFC NFT Creator Backend running on", PORT);
-});
+
