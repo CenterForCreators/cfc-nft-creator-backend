@@ -707,4 +707,7 @@ app.post("/api/start-mint", async (req, res) => {
   }
 });
 
+app.listen(PORT, () => {
+  console.log("CFC NFT Creator Backend running on", PORT);
+});
 
