@@ -676,7 +676,7 @@ app.post("/api/start-mint", async (req, res) => {
 
     const r = await pool.query(
       `
-      SELECT creator_wallet, metadata_cid, batch_qty
+      SELECT creator_wallet, metadata_cid
       FROM submissions
       WHERE id=$1 AND payment_status='paid'
       `,
@@ -687,23 +687,26 @@ app.post("/api/start-mint", async (req, res) => {
       return res.status(404).json({ error: "Submission not ready for mint" });
     }
 
-    const qty = Number(r.rows[0].batch_qty || 1);
+    const payload = await createXummPayload({
+      TransactionType: "NFTokenMint",
+      Account: r.rows[0].creator_wallet,
+      URI: xrpl.convertStringToHex(
+        `ipfs://${r.rows[0].metadata_cid}`
+      ),
+      Flags: 8,
+      NFTokenTaxon: 0
+    });
 
-    for (let i = 0; i < qty; i++) {
-      await createXummPayload({
-        TransactionType: "NFTokenMint",
-        Account: r.rows[0].creator_wallet,
-        URI: xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`),
-        Flags: 8,
-        NFTokenTaxon: 0
-      });
-    }
+    await pool.query(
+      "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
+      [payload.uuid, id]
+    );
 
-    return res.json({ ok: true, minted: qty });
+    res.json(payload);
 
   } catch (e) {
     console.error("start-mint error:", e);
-    return res.status(500).json({ error: "Failed to start mint" });
+    res.status(500).json({ error: "Failed to start mint" });
   }
 });
 
