@@ -628,7 +628,6 @@ for (let i = 1; i < qty; i++) {
   }
 });
 
-
     // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
     try {
       console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
@@ -645,25 +644,30 @@ for (let i = 1; i < qty; i++) {
         creator_wallet: r.rows[0].creator_wallet,
         terms: r.rows[0].terms || "",
         website: r.rows[0].website || "",
-       quantity: 1
-        
+        quantity: 1
       });
-      
-       await pool.query(
-  "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-  [r.rows[0].id]
-);
+
+      await pool.query(
+        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+        [r.rows[0].id]
+      );
+
       console.log("✅ Marketplace response:", resp.data);
+
     } catch (err) {
       console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
     }
 
-    return res.json({ ok: true });
+    // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
+    res.json({ ok: true });
+
   } catch (e) {
     console.error("mark-minted error:", e);
     return res.status(500).json({ error: "Failed to mark minted" });
   }
 });
+
+   
 // -------------------------------
 // SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
 // -------------------------------
