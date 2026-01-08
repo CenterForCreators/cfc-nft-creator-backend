@@ -605,29 +605,6 @@ await client.disconnect();
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
-    // -------------------------------
-// BATCH MINT REMAINING NFTs (AFTER FIRST SIGNED MINT)
-// -------------------------------
-const qty = Number(r.rows[0].batch_qty || 1);
-
-for (let i = 1; i < qty; i++) {
-  await createXummPayload({
-    TransactionType: "NFTokenMint",
-    Account: r.rows[0].creator_wallet,
-    URI: xrpl.convertStringToHex(
-      `ipfs://${r.rows[0].metadata_cid}`
-    ),
-    Flags: 8,
-    NFTokenTaxon: 0
-  });
-}
-
-  } catch (e) {
-    console.error("mark-minted error:", e);
-    return res.status(500).json({ error: "Failed to mark minted" });
-  }
-});
-
     // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
     try {
       console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
