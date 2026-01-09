@@ -720,8 +720,8 @@ for (let i = 0; i < qty; i++) {
       [payload.uuid, id]
     );
 
-   res.json({
-  link: payload.link
+   res.json({ ok: true });
+
 });
 
   } catch (e) {
