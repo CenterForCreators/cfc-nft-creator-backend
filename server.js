@@ -710,6 +710,7 @@ for (let i = 0; i < qty; i++) {
       headers: {
         "X-API-Key": process.env.XUMM_API_KEY,
         "X-API-Secret": process.env.XUMM_API_SECRET
+     }
     }
   );
 }
