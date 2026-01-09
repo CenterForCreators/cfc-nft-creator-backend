@@ -714,6 +714,79 @@ app.post("/api/start-mint", async (req, res) => {
     res.status(500).json({ error: "Failed to start mint" });
   }
 });
+// -------------------------------
+// START FULL MINT FLOW (PAY → MINT → SELL OFFER)
+// -------------------------------
+app.post("/api/start-full-mint", async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "Missing submission id" });
+    }
+
+    const r = await pool.query(
+      `
+      SELECT creator_wallet, metadata_cid, batch_qty, price_xrp, price_rlusd
+      FROM submissions
+      WHERE id=$1 AND payment_status='unpaid'
+      `,
+      [id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not ready" });
+    }
+
+    const sub = r.rows[0];
+
+    // 1️⃣ PAY XRP MINT FEE
+    const payPayload = await createXummPayload({
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: xrpl.xrpToDrops(String(sub.batch_qty || 1))
+    });
+
+    // 2️⃣ MINT NFT
+    const mintPayload = {
+      TransactionType: "NFTokenMint",
+      Account: sub.creator_wallet,
+      URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
+      Flags: 8,
+      NFTokenTaxon: 0
+    };
+
+    // 3️⃣ SELL OFFER (RLUSD FIRST IF SET, ELSE XRP)
+    let sellOfferTx = null;
+
+    if (sub.price_rlusd) {
+      sellOfferTx = {
+        TransactionType: "NFTokenCreateOffer",
+        Amount: {
+          currency: "524C555344000000000000000000000000000000",
+          issuer: process.env.RLUSD_ISSUER,
+          value: String(sub.price_rlusd)
+        },
+        Flags: 1
+      };
+    } else if (sub.price_xrp) {
+      sellOfferTx = {
+        TransactionType: "NFTokenCreateOffer",
+        Amount: String(Math.floor(Number(sub.price_xrp) * 1_000_000)),
+        Flags: 1
+      };
+    }
+
+    res.json({
+      step1: payPayload.link,
+      step2: mintPayload,
+      step3: sellOfferTx
+    });
+
+  } catch (e) {
+    console.error("start-full-mint error:", e);
+    res.status(500).json({ error: "Failed to start full mint flow" });
+  }
+});
 
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
