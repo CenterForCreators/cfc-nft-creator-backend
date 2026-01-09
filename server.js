@@ -690,7 +690,7 @@ app.post("/api/start-mint", async (req, res) => {
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not ready for mint" });
     }
-const qty = Number(batch_qty || 1);
+const qty = Number(r.rows[0].batch_qty || 1);
 
 for (let i = 0; i < qty; i++) {
   const payload = {
