@@ -720,7 +720,9 @@ for (let i = 0; i < qty; i++) {
       [payload.uuid, id]
     );
 
-    res.json(payload);
+   res.json({
+  link: payload.link
+});
 
   } catch (e) {
     console.error("start-mint error:", e);
