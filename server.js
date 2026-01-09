@@ -690,15 +690,27 @@ app.post("/api/start-mint", async (req, res) => {
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not ready for mint" });
     }
+const qty = Number(batch_qty || 1);
 
-    const payload = await createXummPayload({
+for (let i = 0; i < qty; i++) {
+  const payload = {
+    txjson: {
       TransactionType: "NFTokenMint",
-      Account: r.rows[0].creator_wallet,
-      URI: xrpl.convertStringToHex(
-        `ipfs://${r.rows[0].metadata_cid}`
-      ),
+      Account: creatorWallet.classicAddress,
+      URI: xrpl.convertStringToHex(`ipfs://${metadata_cid}`),
       Flags: 8,
       NFTokenTaxon: 0
+    }
+  };
+
+  await axios.post(
+    "https://xumm.app/api/v1/platform/payload",
+    payload,
+    {
+      headers: {
+        "X-API-Key": process.env.XUMM_API_KEY,
+        "X-API-Secret": process.env.XUMM_API_SECRET
+    
     });
 
     await pool.query(
