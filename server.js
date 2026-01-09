@@ -680,9 +680,9 @@ app.post("/api/start-mint", async (req, res) => {
 
     const r = await pool.query(
       `
-      SELECT creator_wallet, metadata_cid
-      FROM submissions
-      WHERE id=$1 AND payment_status='paid'
+      SELECT creator_wallet, metadata_cid, batch_qty
+FROM submissions
+WHERE id=$1 AND payment_status='paid'
       `,
       [id]
     );
@@ -715,20 +715,14 @@ for (let i = 0; i < qty; i++) {
   );
 }
 
-    await pool.query(
-      "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
-      [payload.uuid, id]
-    );
-
-   res.json({ ok: true });
-
-});
+    res.json({ ok: true });
 
   } catch (e) {
     console.error("start-mint error:", e);
     res.status(500).json({ error: "Failed to start mint" });
   }
 });
+ 
 
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
