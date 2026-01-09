@@ -710,8 +710,9 @@ for (let i = 0; i < qty; i++) {
       headers: {
         "X-API-Key": process.env.XUMM_API_KEY,
         "X-API-Secret": process.env.XUMM_API_SECRET
-    
-    });
+    }
+  );
+}
 
     await pool.query(
       "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
