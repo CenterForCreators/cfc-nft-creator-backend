@@ -696,7 +696,7 @@ for (let i = 0; i < qty; i++) {
   const payload = {
     txjson: {
       TransactionType: "NFTokenMint",
-      Account: creatorWallet.classicAddress,
+     Account: r.rows[0].creator_wallet,
       URI: xrpl.convertStringToHex(`ipfs://${metadata_cid}`),
       Flags: 8,
       NFTokenTaxon: 0
