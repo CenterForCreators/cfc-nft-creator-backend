@@ -606,35 +606,6 @@ await client.disconnect();
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
-    // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
-    try {
-      console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
-
-      const resp = await axios.post(MARKETPLACE_BACKEND, {
-        submission_id: r.rows[0].id,
-        name: r.rows[0].name,
-        description: r.rows[0].description || "",
-        category: "all",
-        image_cid: r.rows[0].image_cid,
-        metadata_cid: r.rows[0].metadata_cid,
-        price_xrp: r.rows[0].price_xrp,
-        price_rlusd: r.rows[0].price_rlusd,
-        creator_wallet: r.rows[0].creator_wallet,
-        terms: r.rows[0].terms || "",
-        website: r.rows[0].website || "",
-        quantity: 1
-      });
-
-      await pool.query(
-        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-        [r.rows[0].id]
-      );
-
-      console.log("✅ Marketplace response:", resp.data);
-
-    } catch (err) {
-      console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
-    }
 
     // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
     res.json({ ok: true });
@@ -645,29 +616,37 @@ await client.disconnect();
   }
 });
 
-   
-// -------------------------------
-// SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
-// -------------------------------
-app.post("/api/set-regular-key", async (req, res) => {
-  try {
-    const { wallet } = req.body;
-    if (!wallet) {
-      return res.status(400).json({ error: "Missing wallet" });
+async function getMintedNFTokenID(mintUuid) {
+  const payloadRes = await axios.get(
+    `https://xumm.app/api/v1/platform/payload/${mintUuid}`,
+    {
+      headers: {
+        "X-API-Key": XUMM_API_KEY,
+        "X-API-Secret": XUMM_API_SECRET
+      }
     }
+  );
 
-    const payload = await createXummPayload({
-      TransactionType: "SetRegularKey",
-      Account: wallet,
-      RegularKey: process.env.MARKETPLACE_REGULAR_KEY
-    });
+  const txid = payloadRes.data?.response?.txid;
+  if (!txid) return null;
 
-    res.json(payload);
-  } catch (e) {
-    console.error("set-regular-key error:", e);
-    res.status(500).json({ error: "Failed to set regular key" });
-  }
-});
+  const client = new xrpl.Client(XRPL_NETWORK);
+  await client.connect();
+
+  const tx = await client.request({
+    command: "tx",
+    transaction: txid,
+    binary: false
+  });
+
+  await client.disconnect();
+
+  const node = tx.result.meta.AffectedNodes.find(
+    n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
+  );
+
+  return node?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID || null;
+}
 
 // -------------------------------
 // START NFT MINT (CREATOR)
