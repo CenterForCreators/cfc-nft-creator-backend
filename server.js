@@ -697,7 +697,7 @@ for (let i = 0; i < qty; i++) {
     txjson: {
       TransactionType: "NFTokenMint",
      Account: r.rows[0].creator_wallet,
-      URI: xrpl.convertStringToHex(`ipfs://${metadata_cid}`),
+     URI: xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`),
       Flags: 8,
       NFTokenTaxon: 0
     }
