@@ -93,6 +93,15 @@ async function initDB() {
       is_delisted BOOLEAN DEFAULT false
     );
   `);
+  await pool.query(`
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS nftoken_id TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE submissions
+    ADD COLUMN IF NOT EXISTS category TEXT;
+  `);
 
   // 🔹 LEARN-TO-EARN TABLES (ADD-ONLY)
   await pool.query(`
