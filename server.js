@@ -810,27 +810,26 @@ app.post("/api/start-full-mint", async (req, res) => {
 
     const sub = r.rows[0];
     const qty = Number(sub.batch_qty || 1);
+// 1️⃣ PAY XRP MINT FEE (1 XRP per NFT)
+const payPayload = await createXummPayload({
+  TransactionType: "Payment",
+  Destination: PAYMENT_DEST,
+  Amount: xrpl.xrpToDrops(String(qty))
+});
 
-    // 1️⃣ PAY XRP MINT FEE (1 XRP per NFT)
-    const payPayload = await createXummPayload({
-      TransactionType: "Payment",
-      Destination: PAYMENT_DEST,
-      Amount: xrpl.xrpToDrops(String(qty))
-    });
+// store uuid so /api/mark-paid can validate it
+await pool.query(
+  "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
+  [payPayload.uuid, id]
+);
 
-    // store uuid so /api/mark-paid can validate it
-    await pool.query(
-      "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
-      [payPayload.uuid, id]
-    );
+// frontend expects step1
+return res.json({ step1: payPayload.link, uuid: payPayload.uuid });
 
-    // frontend expects step1
-    res.json({ step1: payPayload.link, uuid: payPayload.uuid });
-
-  } catch (e) {
-    console.error("start-full-mint error:", e);
-    res.status(500).json({ error: "Failed to start full mint flow" });
-  }
+} catch (e) {
+  console.error("start-full-mint error:", e);
+  return res.status(500).json({ error: "Failed to start full mint flow" });
+}
 });
 
 app.listen(PORT, () => {
