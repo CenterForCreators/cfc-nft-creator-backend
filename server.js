@@ -546,27 +546,6 @@ app.post("/api/mark-paid", async (req, res) => {
       NFTokenTaxon: 0
     };
 
-    // 3️⃣ SELL OFFER (RLUSD FIRST IF SET, ELSE XRP)
-    let sellOfferTx = null;
-
-    if (sub.price_rlusd) {
-      sellOfferTx = {
-        TransactionType: "NFTokenCreateOffer",
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: process.env.RLUSD_ISSUER,
-          value: String(sub.price_rlusd)
-        },
-        Flags: 1
-      };
-    } else if (sub.price_xrp) {
-      sellOfferTx = {
-        TransactionType: "NFTokenCreateOffer",
-        Amount: String(Math.floor(Number(sub.price_xrp) * 1_000_000)),
-        Flags: 1
-      };
-    }
-
     res.json({
       step1: payPayload.link,
       step2: mintPayload,
