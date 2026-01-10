@@ -616,6 +616,25 @@ try {
 } catch (e) {
   console.error("auto add-nft failed:", e?.response?.data || e.message);
 }
+    // AUTO-CREATE SELL OFFER AFTER LISTING
+try {
+  await axios.post(
+    "https://cfc-nft-shared-mint-backend.onrender.com/api/admin/create-sell-offer",
+    {
+      id,
+      currency: r.rows[0].price_rlusd ? "RLUSD" : "XRP"
+    },
+    {
+      headers: {
+        "X-API-Key": XUMM_API_KEY,
+        "X-API-Secret": XUMM_API_SECRET
+      }
+    }
+  );
+} catch (e) {
+  console.error("auto create-sell-offer failed:", e?.response?.data || e.message);
+}
+
     // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
     res.json({ ok: true });
 
