@@ -607,7 +607,15 @@ await client.disconnect();
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
-
+// AUTO-LIST TO MARKETPLACE AFTER MINT
+try {
+  await axios.post(
+    "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft",
+    { submission_id: id }
+  );
+} catch (e) {
+  console.error("auto add-nft failed:", e?.response?.data || e.message);
+}
     // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
     res.json({ ok: true });
 
