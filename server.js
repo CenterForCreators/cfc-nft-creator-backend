@@ -694,6 +694,59 @@ app.post("/api/start-mint", async (req, res) => {
   }
 });
 // -------------------------------
+// START SELL OFFER (CREATOR-SIGNED)
+// -------------------------------
+app.post("/api/start-sell-offer", async (req, res) => {
+  try {
+    const { id, currency } = req.body; // currency = "XRP" or "RLUSD"
+
+    if (!id || !currency) {
+      return res.status(400).json({ error: "Missing id or currency" });
+    }
+
+    const r = await pool.query(
+      `
+      SELECT creator_wallet, nftoken_id, price_xrp, price_rlusd
+      FROM submissions
+      WHERE id=$1 AND mint_status='minted'
+      `,
+      [id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "NFT not ready" });
+    }
+
+    const s = r.rows[0];
+
+    let Amount;
+    if (currency === "XRP") {
+      Amount = xrpl.xrpToDrops(String(s.price_xrp));
+    } else {
+      Amount = {
+        currency: "524C555344000000000000000000000000000000",
+        issuer: process.env.RLUSD_ISSUER,
+        value: String(s.price_rlusd)
+      };
+    }
+
+    const payload = await createXummPayload({
+      TransactionType: "NFTokenCreateOffer",
+      Account: s.creator_wallet,
+      NFTokenID: s.nftoken_id,
+      Amount,
+      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
+    });
+
+    res.json(payload);
+
+  } catch (e) {
+    console.error("start-sell-offer error:", e);
+    res.status(500).json({ error: "Failed to start sell offer" });
+  }
+});
+
+// -------------------------------
 // START FULL MINT FLOW (PAY → MINT → SELL OFFER)
 // -------------------------------
 app.post("/api/start-full-mint", async (req, res) => {
