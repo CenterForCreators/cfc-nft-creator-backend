@@ -747,47 +747,6 @@ app.post("/api/start-sell-offer", async (req, res) => {
 });
 
 
-    // 2️⃣ MINT NFT
-    const mintPayload = {
-      TransactionType: "NFTokenMint",
-      Account: sub.creator_wallet,
-      URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
-      Flags: 8,
-      NFTokenTaxon: 0
-    };
-
-    // 3️⃣ SELL OFFER (RLUSD FIRST IF SET, ELSE XRP)
-    let sellOfferTx = null;
-
-    if (sub.price_rlusd) {
-      sellOfferTx = {
-        TransactionType: "NFTokenCreateOffer",
-        Amount: {
-          currency: "524C555344000000000000000000000000000000",
-          issuer: process.env.RLUSD_ISSUER,
-          value: String(sub.price_rlusd)
-        },
-        Flags: 1
-      };
-    } else if (sub.price_xrp) {
-      sellOfferTx = {
-        TransactionType: "NFTokenCreateOffer",
-        Amount: String(Math.floor(Number(sub.price_xrp) * 1_000_000)),
-        Flags: 1
-      };
-    }
-
-    res.json({
-      step1: payPayload.link,
-      step2: mintPayload,
-      step3: sellOfferTx
-    });
-
-  } catch (e) {
-    console.error("start-full-mint error:", e);
-    res.status(500).json({ error: "Failed to start full mint flow" });
-  }
-});
 // -------------------------------
 // START FULL MINT FLOW (PAY → then frontend handles mint+sell after return)
 // -------------------------------
