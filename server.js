@@ -819,6 +819,54 @@ app.post("/api/start-full-mint", async (req, res) => {
     res.status(500).json({ error: "Failed to start full mint flow" });
   }
 });
+// -------------------------------
+// START FULL MINT FLOW (PAY → then frontend handles mint+sell after return)
+// -------------------------------
+app.post("/api/start-full-mint", async (req, res) => {
+  try {
+    const { id } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "Missing submission id" });
+    }
+
+    // only allow if unpaid (mint flow starts with payment)
+    const r = await pool.query(
+      `
+      SELECT id, batch_qty
+      FROM submissions
+      WHERE id=$1 AND payment_status='unpaid'
+      `,
+      [id]
+    );
+
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Submission not ready" });
+    }
+
+    const sub = r.rows[0];
+    const qty = Number(sub.batch_qty || 1);
+
+    // 1️⃣ PAY XRP MINT FEE (1 XRP per NFT)
+    const payPayload = await createXummPayload({
+      TransactionType: "Payment",
+      Destination: PAYMENT_DEST,
+      Amount: xrpl.xrpToDrops(String(qty))
+    });
+
+    // store uuid so /api/mark-paid can validate it
+    await pool.query(
+      "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
+      [payPayload.uuid, id]
+    );
+
+    // frontend expects step1
+    res.json({ step1: payPayload.link, uuid: payPayload.uuid });
+
+  } catch (e) {
+    console.error("start-full-mint error:", e);
+    res.status(500).json({ error: "Failed to start full mint flow" });
+  }
+});
 
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
