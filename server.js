@@ -1,5 +1,6 @@
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -537,27 +538,6 @@ app.post("/api/mark-paid", async (req, res) => {
     }
 
     res.json({ ok: true });
-        // 2️⃣ MINT NFT
-    const mintPayload = {
-      TransactionType: "NFTokenMint",
-      Account: sub.creator_wallet,
-      URI: xrpl.convertStringToHex(`ipfs://${sub.metadata_cid}`),
-      Flags: 8,
-      NFTokenTaxon: 0
-    };
-
-    res.json({
-      step1: payPayload.link,
-      step2: mintPayload,
-      step3: sellOfferTx
-    });
-
-  } catch (e) {
-    console.error("start-full-mint error:", e);
-    res.status(500).json({ error: "Failed to start full mint flow" });
-  }
-});
-
   } catch (e) {
     console.error("mark-paid error:", e);
     res.status(500).json({ error: "Failed to mark paid" });
