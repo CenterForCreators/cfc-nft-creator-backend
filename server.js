@@ -567,6 +567,11 @@ return res.json({
   mint_uuid: mintPayload.uuid,
   mint_link: mintPayload.link
 });
+ } catch (e) {
+    console.error("mark-paid error:", e);
+    return res.status(500).json({ error: "Failed to mark paid" });
+  }
+});
 
 
 // -------------------------------
