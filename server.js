@@ -93,15 +93,6 @@ async function initDB() {
       is_delisted BOOLEAN DEFAULT false
     );
   `);
-  await pool.query(`
-    ALTER TABLE submissions
-    ADD COLUMN IF NOT EXISTS nftoken_id TEXT;
-  `);
-
-  await pool.query(`
-    ALTER TABLE submissions
-    ADD COLUMN IF NOT EXISTS category TEXT;
-  `);
 
   // 🔹 LEARN-TO-EARN TABLES (ADD-ONLY)
   await pool.query(`
@@ -532,47 +523,26 @@ app.post("/api/mark-paid", async (req, res) => {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
 
-   const r = await pool.query(
-  `
-  UPDATE submissions
-  SET payment_status='paid'
-  WHERE id=$1 AND payment_uuid=$2
-  RETURNING id, creator_wallet, metadata_cid
-  `,
-  [id, uuid]
-);
+    const r = await pool.query(
+      `
+      UPDATE submissions
+      SET payment_status='paid'
+      WHERE id=$1 AND payment_uuid=$2
+      RETURNING id
+      `,
+      [id, uuid]
+    );
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found or already paid" });
     }
 
-   // 🔹 AUTO-CREATE MINT PAYLOAD AFTER PAYMENT
-const mintPayload = await createXummPayload({
-  TransactionType: "NFTokenMint",
-  Account: r.rows[0].creator_wallet,
-  URI: xrpl.convertStringToHex(`ipfs://${r.rows[0].metadata_cid}`),
-  Flags: 8,
-  NFTokenTaxon: 0
-});
-
-// store mint uuid
-await pool.query(
-  "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
-  [mintPayload.uuid, id]
-);
-
-// return mint payload to frontend
-return res.json({
-  ok: true,
-  mint_uuid: mintPayload.uuid,
-  mint_link: mintPayload.link
-});
- } catch (e) {
+    res.json({ ok: true });
+  } catch (e) {
     console.error("mark-paid error:", e);
-    return res.status(500).json({ error: "Failed to mark paid" });
+    res.status(500).json({ error: "Failed to mark paid" });
   }
 });
-
 
 // -------------------------------
 // MARK MINTED AFTER XAMAN MINT
@@ -637,33 +607,35 @@ await client.disconnect();
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
-// AUTO-LIST TO MARKETPLACE AFTER MINT
-try {
-  await axios.post(
-    "https://cfc-nft-shared-mint-backend.onrender.com/api/add-nft",
-    { submission_id: id }
-  );
-} catch (e) {
-  console.error("auto add-nft failed:", e?.response?.data || e.message);
-}
-    // AUTO-CREATE SELL OFFER AFTER LISTING
-try {
-  await axios.post(
-    "https://cfc-nft-shared-mint-backend.onrender.com/api/admin/create-sell-offer",
-    {
-      id,
-      currency: r.rows[0].price_rlusd ? "RLUSD" : "XRP"
-    },
-    {
-      headers: {
-        "X-API-Key": XUMM_API_KEY,
-        "X-API-Secret": XUMM_API_SECRET
-      }
+    // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
+    try {
+      console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
+
+      const resp = await axios.post(MARKETPLACE_BACKEND, {
+        submission_id: r.rows[0].id,
+        name: r.rows[0].name,
+        description: r.rows[0].description || "",
+        category: "all",
+        image_cid: r.rows[0].image_cid,
+        metadata_cid: r.rows[0].metadata_cid,
+        price_xrp: r.rows[0].price_xrp,
+        price_rlusd: r.rows[0].price_rlusd,
+        creator_wallet: r.rows[0].creator_wallet,
+        terms: r.rows[0].terms || "",
+        website: r.rows[0].website || "",
+        quantity: 1
+      });
+
+      await pool.query(
+        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+        [r.rows[0].id]
+      );
+
+      console.log("✅ Marketplace response:", resp.data);
+
+    } catch (err) {
+      console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
     }
-  );
-} catch (e) {
-  console.error("auto create-sell-offer failed:", e?.response?.data || e.message);
-}
 
     // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
     res.json({ ok: true });
@@ -674,37 +646,29 @@ try {
   }
 });
 
-async function getMintedNFTokenID(mintUuid) {
-  const payloadRes = await axios.get(
-    `https://xumm.app/api/v1/platform/payload/${mintUuid}`,
-    {
-      headers: {
-        "X-API-Key": XUMM_API_KEY,
-        "X-API-Secret": XUMM_API_SECRET
-      }
+   
+// -------------------------------
+// SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
+// -------------------------------
+app.post("/api/set-regular-key", async (req, res) => {
+  try {
+    const { wallet } = req.body;
+    if (!wallet) {
+      return res.status(400).json({ error: "Missing wallet" });
     }
-  );
 
-  const txid = payloadRes.data?.response?.txid;
-  if (!txid) return null;
+    const payload = await createXummPayload({
+      TransactionType: "SetRegularKey",
+      Account: wallet,
+      RegularKey: process.env.MARKETPLACE_REGULAR_KEY
+    });
 
-  const client = new xrpl.Client(XRPL_NETWORK);
-  await client.connect();
-
-  const tx = await client.request({
-    command: "tx",
-    transaction: txid,
-    binary: false
-  });
-
-  await client.disconnect();
-
-  const node = tx.result.meta.AffectedNodes.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
-  );
-
-  return node?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID || null;
-}
+    res.json(payload);
+  } catch (e) {
+    console.error("set-regular-key error:", e);
+    res.status(500).json({ error: "Failed to set regular key" });
+  }
+});
 
 // -------------------------------
 // START NFT MINT (CREATOR)
@@ -750,107 +714,6 @@ app.post("/api/start-mint", async (req, res) => {
     console.error("start-mint error:", e);
     res.status(500).json({ error: "Failed to start mint" });
   }
-});
-// -------------------------------
-// START SELL OFFER (CREATOR-SIGNED)
-// -------------------------------
-app.post("/api/start-sell-offer", async (req, res) => {
-  try {
-    const { id, currency } = req.body; // currency = "XRP" or "RLUSD"
-
-    if (!id || !currency) {
-      return res.status(400).json({ error: "Missing id or currency" });
-    }
-
-    const r = await pool.query(
-      `
-      SELECT creator_wallet, nftoken_id, price_xrp, price_rlusd
-      FROM submissions
-      WHERE id=$1 AND mint_status='minted'
-      `,
-      [id]
-    );
-
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "NFT not ready" });
-    }
-
-    const s = r.rows[0];
-
-    let Amount;
-    if (currency === "XRP") {
-      Amount = xrpl.xrpToDrops(String(s.price_xrp));
-    } else {
-      Amount = {
-        currency: "524C555344000000000000000000000000000000",
-        issuer: process.env.RLUSD_ISSUER,
-        value: String(s.price_rlusd)
-      };
-    }
-
-    const payload = await createXummPayload({
-      TransactionType: "NFTokenCreateOffer",
-      Account: s.creator_wallet,
-      NFTokenID: s.nftoken_id,
-      Amount,
-      Flags: xrpl.NFTokenCreateOfferFlags.tfSellNFToken
-    });
-
-    res.json(payload);
-
-  } catch (e) {
-    console.error("start-sell-offer error:", e);
-    res.status(500).json({ error: "Failed to start sell offer" });
-  }
-});
-
-
-// -------------------------------
-// START FULL MINT FLOW (PAY → then frontend handles mint+sell after return)
-// -------------------------------
-app.post("/api/start-full-mint", async (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) {
-      return res.status(400).json({ error: "Missing submission id" });
-    }
-
-    // only allow if unpaid (mint flow starts with payment)
-    const r = await pool.query(
-      `
-      SELECT id, batch_qty
-      FROM submissions
-      WHERE id=$1 AND payment_status='unpaid'
-      `,
-      [id]
-    );
-
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "Submission not ready" });
-    }
-
-    const sub = r.rows[0];
-    const qty = Number(sub.batch_qty || 1);
-// 1️⃣ PAY XRP MINT FEE (1 XRP per NFT)
-const payPayload = await createXummPayload({
-  TransactionType: "Payment",
-  Destination: PAYMENT_DEST,
-  Amount: xrpl.xrpToDrops(String(qty))
-});
-
-// store uuid so /api/mark-paid can validate it
-await pool.query(
-  "UPDATE submissions SET payment_uuid=$1 WHERE id=$2",
-  [payPayload.uuid, id]
-);
-
-// frontend expects step1
-return res.json({ step1: payPayload.link, uuid: payPayload.uuid });
-
-} catch (e) {
-  console.error("start-full-mint error:", e);
-  return res.status(500).json({ error: "Failed to start full mint flow" });
-}
 });
 
 app.listen(PORT, () => {
