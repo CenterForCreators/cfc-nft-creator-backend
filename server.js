@@ -573,9 +573,16 @@ if (txid) {
     binary: false
   });
 
-  const createdNode = tx.result.meta.AffectedNodes.find(
-    n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
-  );
+ const createdNode = tx.result.meta.AffectedNodes.find(
+  n =>
+    n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
+    n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+);
+
+const nftoken_id =
+  createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
+  createdNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
+
 
   const nftoken_id =
     createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID;
