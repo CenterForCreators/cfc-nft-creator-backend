@@ -717,6 +717,99 @@ app.post("/api/start-mint", async (req, res) => {
     res.status(500).json({ error: "Failed to start mint" });
   }
 });
+// -------------------------------
+// XAMAN WEBHOOK (REQUIRED)
+// -------------------------------
+app.post("/api/xaman/webhook", async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    const payload = req.body?.payload;
+    if (!payload) return res.json({ ok: true });
+
+    // Only process successful signed tx
+    if (
+      payload.response?.dispatched_result !== "tesSUCCESS" ||
+      payload.meta?.signed !== true
+    ) {
+      return res.json({ ok: true });
+    }
+
+    const txid = payload.response?.txid;
+    if (!txid) return res.json({ ok: true });
+
+    // Pull full tx from XRPL
+    const xrplClient = new xrpl.Client(XRPL_NETWORK);
+    await xrplClient.connect();
+
+    const tx = await xrplClient.request({
+      command: "tx",
+      transaction: txid,
+      binary: false
+    });
+
+    await xrplClient.disconnect();
+
+    const nodes = tx.result.meta.AffectedNodes || [];
+
+    // -------------------------------
+    // CAPTURE NFTOKENID (MINT)
+    // -------------------------------
+    const nftNode = nodes.find(
+      n =>
+        n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
+        n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+    );
+
+    const nftoken_id =
+      nftNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
+      nftNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
+
+    if (nftoken_id && payload.custom_meta?.blob?.submission_id) {
+      await client.query(
+        "UPDATE submissions SET nftoken_id=$1 WHERE id=$2",
+        [nftoken_id, payload.custom_meta.blob.submission_id]
+      );
+    }
+
+    // -------------------------------
+    // CAPTURE SELL OFFER INDEX
+    // -------------------------------
+    const offerNode = nodes.find(
+      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
+    );
+
+    if (
+      offerNode &&
+      payload.custom_meta?.blob?.marketplace_nft_id &&
+      payload.custom_meta?.blob?.currency
+    ) {
+      const ledgerIndex = offerNode.CreatedNode.LedgerIndex;
+      const { marketplace_nft_id, currency } = payload.custom_meta.blob;
+
+      if (currency === "XRP") {
+        await client.query(
+          "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
+          [ledgerIndex, marketplace_nft_id]
+        );
+      }
+
+      if (currency === "RLUSD") {
+        await client.query(
+          "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
+          [ledgerIndex, marketplace_nft_id]
+        );
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("xaman webhook error:", e);
+    res.json({ ok: true });
+  } finally {
+    client.release();
+  }
+});
 
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
