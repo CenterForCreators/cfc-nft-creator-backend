@@ -788,13 +788,45 @@ app.post("/api/xaman/webhook", async (req, res) => {
       nftNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
       nftNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
 
-    if (nftoken_id && payload.custom_meta?.blob?.submission_id) {
-      await client.query(
-        "UPDATE submissions SET nftoken_id=$1 WHERE id=$2",
-        [nftoken_id, payload.custom_meta.blob.submission_id]
-      );
-    }
+   if (nftoken_id && payload.custom_meta?.blob?.submission_id) {
+  const submissionId = payload.custom_meta.blob.submission_id;
 
+  // 🔹 Load existing nftoken_ids
+  const existing = await client.query(
+    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
+    [submissionId]
+  );
+
+  let ids = [];
+
+  if (existing.rows[0]?.nftoken_ids) {
+    try {
+      ids = JSON.parse(existing.rows[0].nftoken_ids);
+      if (!Array.isArray(ids)) ids = [];
+    } catch {
+      ids = [];
+    }
+  }
+
+  // 🔹 Append if new
+  if (!ids.includes(nftoken_id)) {
+    ids.push(nftoken_id);
+  }
+
+  await client.query(
+    "UPDATE submissions SET nftoken_ids=$1 WHERE id=$2",
+    [JSON.stringify(ids), submissionId]
+  );
+
+  // 🔹 Mark fully minted ONLY when complete
+  const batchQty = Number(existing.rows[0]?.batch_qty || 1);
+  if (ids.length >= batchQty) {
+    await client.query(
+      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
+      [submissionId]
+    );
+  }
+}
     // -------------------------------
     // CAPTURE SELL OFFER INDEX
     // -------------------------------
