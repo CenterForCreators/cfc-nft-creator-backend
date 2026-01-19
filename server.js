@@ -546,160 +546,122 @@ app.post("/api/mark-paid", async (req, res) => {
 // -------------------------------
 // MARK MINTED AFTER XAMAN MINT
 // -------------------------------
+
 app.post("/api/mark-minted", async (req, res) => {
   try {
     const { id, uuid } = req.body;
-    // 🔹 FETCH NFTokenID FROM XRPL (ADD-ONLY)
-const client = new xrpl.Client(XRPL_NETWORK);
-await client.connect();
-
-const payloadRes = await axios.get(
-  `https://xumm.app/api/v1/platform/payload/${uuid}`,
-  {
-    headers: {
-      "X-API-Key": XUMM_API_KEY,
-      "X-API-Secret": XUMM_API_SECRET
-    }
-  }
-);
-
-const txid = payloadRes.data?.response?.txid;
-
-if (txid) {
-  const tx = await client.request({
-    command: "tx",
-    transaction: txid,
-    binary: false
-  });
-
- const createdNode = tx.result.meta.AffectedNodes.find(
-  n =>
-    n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
-    n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
-);
-let nftoken_id =
-  createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
-  createdNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
- if (nftoken_id) {
-  const submission = await pool.query(
-    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
-    [id]
-  );
-
-  let ids = [];
-
-  if (submission.rows[0]?.nftoken_ids) {
-    ids = JSON.parse(submission.rows[0].nftoken_ids);
-  }
-
-  if (!ids.includes(nftoken_id)) {
-    ids.push(nftoken_id);
-  }
-
-  await pool.query(
-    "UPDATE submissions SET nftoken_ids=$1, nftoken_id=$2 WHERE id=$3",
-    [JSON.stringify(ids), nftoken_id, id]
-  );
-
- if (ids.length >= Number(submission.rows[0].batch_qty)) {
-  const r = await pool.query(
-    "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
-    [id]
-  );
-
-  try {
-    console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
-
-    const resp = await axios.post(MARKETPLACE_BACKEND, {
-      submission_id: r.rows[0].id,
-      name: r.rows[0].name,
-      description: r.rows[0].description || "",
-      category: "all",
-      image_cid: r.rows[0].image_cid,
-      metadata_cid: r.rows[0].metadata_cid,
-      price_xrp: r.rows[0].price_xrp,
-      price_rlusd: r.rows[0].price_rlusd,
-      creator_wallet: r.rows[0].creator_wallet,
-      terms: r.rows[0].terms || "",
-      website: r.rows[0].website || "",
-      quantity: r.rows[0].batch_qty
-    });
-
-    await pool.query(
-      "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-      [r.rows[0].id]
-    );
-
-    console.log("✅ Marketplace response:", resp.data);
-  } catch (err) {
-    console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
-  }
-}
- 
- if (nftoken_id) {
-  // 🔹 Load existing nftoken_ids
-  const existing = await pool.query(
-    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
-    [id]
-  );
-
-  let ids = [];
-
-  if (existing.rows[0]?.nftoken_ids) {
-    try {
-      ids = JSON.parse(existing.rows[0].nftoken_ids);
-      if (!Array.isArray(ids)) ids = [];
-    } catch {
-      ids = [];
-    }
-  }
-
-  // 🔹 Append new NFTokenID if not already present
-  if (!ids.includes(nftoken_id)) {
-    ids.push(nftoken_id);
-  }
-
-  const batchQty = Number(existing.rows[0]?.batch_qty || 1);
-// 🔹 Save single minted NFT (stable)
-await pool.query(
-  "UPDATE submissions SET nftoken_id = $1 WHERE id = $2",
-  [nftoken_id, id]
-);
-
-  // 🔹 Only mark fully minted when ALL are minted
-  if (ids.length >= batchQty) {
-    await pool.query(
-      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
-      [id]
-    );
-  }
-}
-}
-
-await client.disconnect();
-
-    const r = await pool.query(
-      "SELECT * FROM submissions WHERE id=$1",
-      [id]
-    );
-
     if (!id || !uuid) {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
 
-    if (!r.rows.length) {
+    // 1️⃣ Fetch Xaman payload → txid
+    const payloadRes = await axios.get(
+      `https://xumm.app/api/v1/platform/payload/${uuid}`,
+      {
+        headers: {
+          "X-API-Key": XUMM_API_KEY,
+          "X-API-Secret": XUMM_API_SECRET
+        }
+      }
+    );
+
+    const txid = payloadRes.data?.response?.txid;
+    if (!txid) {
+      return res.status(400).json({ error: "Transaction not signed yet" });
+    }
+
+    // 2️⃣ Load XRPL tx
+    const xrplClient = new xrpl.Client(XRPL_NETWORK);
+    await xrplClient.connect();
+
+    const tx = await xrplClient.request({
+      command: "tx",
+      transaction: txid,
+      binary: false
+    });
+
+    await xrplClient.disconnect();
+
+    // 3️⃣ Extract NFTokenID
+    const node = tx.result.meta.AffectedNodes.find(
+      n =>
+        n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
+        n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+    );
+
+    const nftoken_id =
+      node?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
+      node?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
+
+    if (!nftoken_id) {
+      return res.status(400).json({ error: "NFTokenID not found" });
+    }
+
+    // 4️⃣ Load submission
+    const submission = await pool.query(
+      "SELECT * FROM submissions WHERE id=$1",
+      [id]
+    );
+
+    if (!submission.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
 
-    // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
+    const batchQty = Number(submission.rows[0].batch_qty || 1);
+
+    // 5️⃣ Append NFTokenID
+    let ids = [];
+    if (submission.rows[0].nftoken_ids) {
+      try {
+        ids = JSON.parse(submission.rows[0].nftoken_ids);
+      } catch {}
+    }
+
+    if (!ids.includes(nftoken_id)) {
+      ids.push(nftoken_id);
+    }
+
+    await pool.query(
+      "UPDATE submissions SET nftoken_ids=$1, nftoken_id=$2 WHERE id=$3",
+      [JSON.stringify(ids), nftoken_id, id]
+    );
+
+    // 6️⃣ Finalize ONLY when fully minted
+    if (ids.length === batchQty) {
+      const r = await pool.query(
+        "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
+        [id]
+      );
+
+      // 7️⃣ Send ONCE to marketplace
+      await axios.post(MARKETPLACE_BACKEND, {
+        submission_id: r.rows[0].id,
+        name: r.rows[0].name,
+        description: r.rows[0].description || "",
+        category: "all",
+        image_cid: r.rows[0].image_cid,
+        metadata_cid: r.rows[0].metadata_cid,
+        price_xrp: r.rows[0].price_xrp,
+        price_rlusd: r.rows[0].price_rlusd,
+        creator_wallet: r.rows[0].creator_wallet,
+        terms: r.rows[0].terms || "",
+        website: r.rows[0].website || "",
+        quantity: batchQty
+      });
+
+      await pool.query(
+        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+        [id]
+      );
+    }
+
     res.json({ ok: true });
 
   } catch (e) {
     console.error("mark-minted error:", e);
-    return res.status(500).json({ error: "Failed to mark minted" });
+    res.status(500).json({ error: "Failed to mark minted" });
   }
 });
-
    
 // -------------------------------
 // SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
