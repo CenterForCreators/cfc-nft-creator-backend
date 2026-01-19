@@ -582,12 +582,45 @@ let nftoken_id =
   createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
   createdNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
 
-  if (nftoken_id) {
+ if (nftoken_id) {
+  // 🔹 Load existing nftoken_ids
+  const existing = await pool.query(
+    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
+    [id]
+  );
+
+  let ids = [];
+
+  if (existing.rows[0]?.nftoken_ids) {
+    try {
+      ids = JSON.parse(existing.rows[0].nftoken_ids);
+      if (!Array.isArray(ids)) ids = [];
+    } catch {
+      ids = [];
+    }
+  }
+
+  // 🔹 Append new NFTokenID if not already present
+  if (!ids.includes(nftoken_id)) {
+    ids.push(nftoken_id);
+  }
+
+  const batchQty = Number(existing.rows[0]?.batch_qty || 1);
+
+  // 🔹 Update nftoken_ids
+  await pool.query(
+    "UPDATE submissions SET nftoken_ids=$1 WHERE id=$2",
+    [JSON.stringify(ids), id]
+  );
+
+  // 🔹 Only mark fully minted when ALL are minted
+  if (ids.length >= batchQty) {
     await pool.query(
-      "UPDATE submissions SET nftoken_id=$1 WHERE id=$2",
-      [nftoken_id, id]
+      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
+      [id]
     );
   }
+}
 }
 
 await client.disconnect();
@@ -595,16 +628,6 @@ await client.disconnect();
     if (!id || !uuid) {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
-
-    const r = await pool.query(
-      `
-      UPDATE submissions
-      SET mint_status='minted'
-      WHERE id=$1
-      RETURNING *
-      `,
-      [id]
-    );
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
