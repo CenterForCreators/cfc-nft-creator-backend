@@ -64,10 +64,6 @@ app.use(
     credentials: true,
   })
 );
-
-// -------------------------------
-// DATABASE INITIALIZATION
-// -------------------------------
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS submissions (
@@ -92,13 +88,13 @@ async function initDB() {
       rejection_reason TEXT,
       is_delisted BOOLEAN DEFAULT false
     );
+  `);
 
-  // ✅ ADD-ONLY: ensure required columns exist
+  // ADD-ONLY columns
   await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS nftoken_id TEXT;`);
   await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS nftoken_ids TEXT;`);
   await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS sent_to_marketplace BOOLEAN DEFAULT false;`);
-);
-  // 🔹 LEARN-TO-EARN TABLES (ADD-ONLY)
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS learn_user_progress (
       id SERIAL PRIMARY KEY,
@@ -125,7 +121,9 @@ async function initDB() {
     );
   `);
 }
+
 initDB();
+
 
 // -------------------------------
 // UTIL — XUMM PAYLOAD
