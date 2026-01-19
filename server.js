@@ -493,9 +493,6 @@ app.post("/api/pay-xrp", async (req, res) => {
   [submissionId]
 );
 
-    if (!r.rows.length) {
-      return res.status(404).json({ error: "Submission not found" });
-    }
 const payload = await createXummPayload({
   TransactionType: "Payment",
   Destination: PAYMENT_DEST,
@@ -583,6 +580,35 @@ if (txid) {
 let nftoken_id =
   createdNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
   createdNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
+ if (nftoken_id) {
+  const submission = await pool.query(
+    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
+    [id]
+  );
+
+  let ids = [];
+
+  if (submission.rows[0]?.nftoken_ids) {
+    ids = JSON.parse(submission.rows[0].nftoken_ids);
+  }
+
+  if (!ids.includes(nftoken_id)) {
+    ids.push(nftoken_id);
+  }
+
+  await pool.query(
+    "UPDATE submissions SET nftoken_ids=$1, nftoken_id=$2 WHERE id=$3",
+    [JSON.stringify(ids), nftoken_id, id]
+  );
+
+  if (ids.length >= Number(submission.rows[0].batch_qty)) {
+    await pool.query(
+      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
+      [id]
+    );
+  }
+}
+ 
 
  if (nftoken_id) {
   // 🔹 Load existing nftoken_ids
@@ -776,58 +802,6 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
     const nodes = tx.result.meta.AffectedNodes || [];
 
-    // -------------------------------
-    // CAPTURE NFTOKENID (MINT)
-    // -------------------------------
-    const nftNode = nodes.find(
-      n =>
-        n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
-        n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
-    );
-
-    const nftoken_id =
-      nftNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
-      nftNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
-
-   if (nftoken_id && id) {
-  const submissionId = id;
-
-  // 🔹 Load existing nftoken_ids
-  const existing = await client.query(
-    "SELECT nftoken_ids, batch_qty FROM submissions WHERE id=$1",
-    [submissionId]
-  );
-
-  let ids = [];
-
-  if (existing.rows[0]?.nftoken_ids) {
-    try {
-      ids = JSON.parse(existing.rows[0].nftoken_ids);
-      if (!Array.isArray(ids)) ids = [];
-    } catch {
-      ids = [];
-    }
-  }
-
-  // 🔹 Append if new
-  if (!ids.includes(nftoken_id)) {
-    ids.push(nftoken_id);
-  }
-
-  await client.query(
-    "UPDATE submissions SET nftoken_ids=$1 WHERE id=$2",
-    [JSON.stringify(ids), submissionId]
-  );
-
-  // 🔹 Mark fully minted ONLY when complete
-  const batchQty = Number(existing.rows[0]?.batch_qty || 1);
-  if (ids.length >= batchQty) {
-    await client.query(
-      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
-      [submissionId]
-    );
-  }
-}
     // -------------------------------
     // CAPTURE SELL OFFER INDEX
     // -------------------------------
