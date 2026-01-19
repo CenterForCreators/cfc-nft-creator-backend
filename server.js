@@ -606,12 +606,11 @@ let nftoken_id =
   }
 
   const batchQty = Number(existing.rows[0]?.batch_qty || 1);
-
-  // 🔹 Update nftoken_ids
-  await pool.query(
-   UPDATE submissions SET nftoken_id = $1 WHERE id = $2
-    [JSON.stringify(ids), id]
-  );
+// 🔹 Save single minted NFT (stable)
+await pool.query(
+  "UPDATE submissions SET nftoken_id = $1 WHERE id = $2",
+  [nftoken_id, id]
+);
 
   // 🔹 Only mark fully minted when ALL are minted
   if (ids.length >= batchQty) {
