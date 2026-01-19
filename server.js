@@ -789,8 +789,8 @@ app.post("/api/xaman/webhook", async (req, res) => {
       nftNode?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
       nftNode?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
 
-   if (nftoken_id && payload.custom_meta?.blob?.submission_id) {
-  const submissionId = payload.custom_meta.blob.submission_id;
+   if (nftoken_id && id) {
+  const submissionId = id;
 
   // 🔹 Load existing nftoken_ids
   const existing = await client.query(
