@@ -712,15 +712,21 @@ app.post("/api/start-mint", async (req, res) => {
       return res.status(404).json({ error: "Submission not ready for mint" });
     }
 
-    const payload = await createXummPayload({
-      TransactionType: "NFTokenMint",
-      Account: r.rows[0].creator_wallet,
-      URI: xrpl.convertStringToHex(
-        `ipfs://${r.rows[0].metadata_cid}`
-      ),
-      Flags: 8,
-      NFTokenTaxon: 0
-    });
+  const payload = await createXummPayload({
+  TransactionType: "NFTokenMint",
+  Account: r.rows[0].creator_wallet,
+  URI: xrpl.convertStringToHex(
+    `ipfs://${r.rows[0].metadata_cid}`
+  ),
+  Flags: 8,
+  NFTokenTaxon: 0,
+  // ✅ REQUIRED: bind mint to submission
+  custom_meta: {
+    blob: {
+      submission_id: id
+    }
+  }
+});
 
     await pool.query(
       "UPDATE submissions SET mint_uuid=$1 WHERE id=$2",
