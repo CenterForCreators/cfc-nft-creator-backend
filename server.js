@@ -652,6 +652,11 @@ await pool.query(
 
 await client.disconnect();
 
+    const r = await pool.query(
+      "SELECT * FROM submissions WHERE id=$1",
+      [id]
+    );
+
     if (!id || !uuid) {
       return res.status(400).json({ error: "Missing id or uuid" });
     }
@@ -659,6 +664,7 @@ await client.disconnect();
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
+
     // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
     try {
       console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
