@@ -609,7 +609,7 @@ let nftoken_id =
 
   // 🔹 Update nftoken_ids
   await pool.query(
-    "UPDATE submissions SET nftoken_ids=$1 WHERE id=$2",
+   UPDATE submissions SET nftoken_id = $1 WHERE id = $2
     [JSON.stringify(ids), id]
   );
 
