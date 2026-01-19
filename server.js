@@ -92,7 +92,7 @@ async function initDB() {
       rejection_reason TEXT,
       is_delisted BOOLEAN DEFAULT false
     );
-  `);
+
   // ✅ ADD-ONLY: ensure required columns exist
   await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS nftoken_id TEXT;`);
   await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS nftoken_ids TEXT;`);
