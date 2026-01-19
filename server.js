@@ -601,15 +601,41 @@ let nftoken_id =
     [JSON.stringify(ids), nftoken_id, id]
   );
 
-  if (ids.length >= Number(submission.rows[0].batch_qty)) {
+ if (ids.length >= Number(submission.rows[0].batch_qty)) {
+  const r = await pool.query(
+    "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
+    [id]
+  );
+
+  try {
+    console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
+
+    const resp = await axios.post(MARKETPLACE_BACKEND, {
+      submission_id: r.rows[0].id,
+      name: r.rows[0].name,
+      description: r.rows[0].description || "",
+      category: "all",
+      image_cid: r.rows[0].image_cid,
+      metadata_cid: r.rows[0].metadata_cid,
+      price_xrp: r.rows[0].price_xrp,
+      price_rlusd: r.rows[0].price_rlusd,
+      creator_wallet: r.rows[0].creator_wallet,
+      terms: r.rows[0].terms || "",
+      website: r.rows[0].website || "",
+      quantity: r.rows[0].batch_qty
+    });
+
     await pool.query(
-      "UPDATE submissions SET mint_status='minted' WHERE id=$1",
-      [id]
+      "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+      [r.rows[0].id]
     );
+
+    console.log("✅ Marketplace response:", resp.data);
+  } catch (err) {
+    console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
   }
 }
  
-
  if (nftoken_id) {
   // 🔹 Load existing nftoken_ids
   const existing = await pool.query(
@@ -663,36 +689,6 @@ await client.disconnect();
 
     if (!r.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
-    }
-
-    // ADD TO MARKETPLACE AFTER MINT (NON-BLOCKING + LOGS)
-    try {
-      console.log("➡️ Sending NFT to marketplace", r.rows[0].id);
-
-      const resp = await axios.post(MARKETPLACE_BACKEND, {
-        submission_id: r.rows[0].id,
-        name: r.rows[0].name,
-        description: r.rows[0].description || "",
-        category: "all",
-        image_cid: r.rows[0].image_cid,
-        metadata_cid: r.rows[0].metadata_cid,
-        price_xrp: r.rows[0].price_xrp,
-        price_rlusd: r.rows[0].price_rlusd,
-        creator_wallet: r.rows[0].creator_wallet,
-        terms: r.rows[0].terms || "",
-        website: r.rows[0].website || "",
-        quantity: 1
-      });
-
-      await pool.query(
-        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-        [r.rows[0].id]
-      );
-
-      console.log("✅ Marketplace response:", resp.data);
-
-    } catch (err) {
-      console.error("❌ Marketplace insert failed:", err?.response?.data || err.message);
     }
 
     // ✅ THIS MUST STAY INSIDE THE ROUTE FUNCTION
