@@ -1,6 +1,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -589,17 +590,16 @@ app.post("/api/mark-minted", async (req, res) => {
 
     await xrplClient.disconnect();
 
-  // 3️⃣ Extract NFTokenID — ONLY the token minted by THIS transaction
-const created = tx.result.meta.AffectedNodes.find(
-  n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
-);
+    // 3️⃣ Extract NFTokenID
+    const node = tx.result.meta.AffectedNodes.find(
+      n =>
+        n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
+        n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+    );
 
-const nftoken_id =
-  created?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID;
-
-if (!nftoken_id) {
-  return res.status(400).json({ error: "NFTokenID not found" });
-}
+    const nftoken_id =
+      node?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
+      node?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
 
     if (!nftoken_id) {
       return res.status(400).json({ error: "NFTokenID not found" });
