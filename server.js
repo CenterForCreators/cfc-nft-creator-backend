@@ -781,36 +781,7 @@ app.post("/api/xaman/webhook", async (req, res) => {
 
     const nodes = tx.result.meta.AffectedNodes || [];
 
-    // -------------------------------
-    // CAPTURE SELL OFFER INDEX
-    // -------------------------------
-    const offerNode = nodes.find(
-      n => n.CreatedNode?.LedgerEntryType === "NFTokenOffer"
-    );
-
-    if (
-      offerNode &&
-      payload.custom_meta?.blob?.marketplace_nft_id &&
-      payload.custom_meta?.blob?.currency
-    ) {
-      const ledgerIndex = offerNode.CreatedNode.LedgerIndex;
-      const { marketplace_nft_id, currency } = payload.custom_meta.blob;
-
-      if (currency === "XRP") {
-        await client.query(
-          "UPDATE marketplace_nfts SET sell_offer_index_xrp=$1 WHERE id=$2",
-          [ledgerIndex, marketplace_nft_id]
-        );
-      }
-
-      if (currency === "RLUSD") {
-        await client.query(
-          "UPDATE marketplace_nfts SET sell_offer_index_rlusd=$1 WHERE id=$2",
-          [ledgerIndex, marketplace_nft_id]
-        );
-      }
-    }
-
+   
     res.json({ ok: true });
   } catch (e) {
     console.error("xaman webhook error:", e);
