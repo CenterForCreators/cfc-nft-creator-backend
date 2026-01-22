@@ -590,22 +590,58 @@ app.post("/api/mark-minted", async (req, res) => {
 
     await xrplClient.disconnect();
 
-    // 3️⃣ Extract NFTokenID
-    const node = tx.result.meta.AffectedNodes.find(
-      n =>
-        n.CreatedNode?.LedgerEntryType === "NFTokenPage" ||
-        n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+ // 3️⃣ Extract NFTokenID — minted by THIS tx (no reuse, batch-safe)
+const nodes = tx.result?.meta?.AffectedNodes || [];
+
+let nftoken_id = null;
+
+// Case A: A new NFTokenPage was created (rare)
+const createdPage = nodes.find(
+  n => n.CreatedNode?.LedgerEntryType === "NFTokenPage"
+);
+
+if (createdPage?.CreatedNode?.NewFields?.NFTokens?.length) {
+  nftoken_id =
+    createdPage.CreatedNode.NewFields.NFTokens[0]?.NFToken?.NFTokenID || null;
+}
+
+// Case B: An existing NFTokenPage was modified (common)
+// Find the token that exists in FinalFields but not in PreviousFields
+if (!nftoken_id) {
+  const modifiedPages = nodes.filter(
+    n => n.ModifiedNode?.LedgerEntryType === "NFTokenPage"
+  );
+
+  for (const n of modifiedPages) {
+    const prev = n.ModifiedNode?.PreviousFields?.NFTokens || [];
+    const fin = n.ModifiedNode?.FinalFields?.NFTokens || [];
+
+    if (!fin.length) continue;
+
+    const prevIds = new Set(
+      prev
+        .map(x => x?.NFToken?.NFTokenID)
+        .filter(Boolean)
     );
 
-    const nftoken_id =
-      node?.CreatedNode?.NewFields?.NFTokens?.[0]?.NFToken?.NFTokenID ||
-      node?.ModifiedNode?.FinalFields?.NFTokens?.slice(-1)[0]?.NFToken?.NFTokenID;
+    const added = fin
+      .map(x => x?.NFToken?.NFTokenID)
+      .filter(Boolean)
+      .find(id => !prevIds.has(id));
 
-    if (!nftoken_id) {
-      return res.status(400).json({ error: "NFTokenID not found" });
+    if (added) {
+      nftoken_id = added;
+      break;
     }
+  }
+}
+
+if (!nftoken_id) {
+  return res.status(400).json({ error: "NFTokenID not found" });
+}
+ 
 // 🔒 GLOBAL UNIQUENESS GUARD — NFTokenID must never be reused
-const reused = await pool.query(
+/* const reused = await pool.query(
   `
   SELECT id
   FROM submissions
@@ -619,7 +655,7 @@ if (reused.rows.length > 0) {
   return res.status(400).json({
     error: "NFTokenID already used by another submission"
   });
-}
+} */
 
     // 4️⃣ Load submission
     const submission = await pool.query(
