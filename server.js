@@ -605,22 +605,6 @@ app.post("/api/mark-minted", async (req, res) => {
     if (!nftoken_id) {
       return res.status(400).json({ error: "NFTokenID not found" });
     }
-// 🔒 GLOBAL UNIQUENESS GUARD — NFTokenID must never be reused
-const reused = await pool.query(
-  `
-  SELECT id
-  FROM submissions
-  WHERE nftoken_ids::text LIKE $1
-    AND id <> $2
-  `,
-  [`%${nftoken_id}%`, id]
-);
-
-if (reused.rows.length > 0) {
-  return res.status(400).json({
-    error: "NFTokenID already used by another submission"
-  });
-}
 
     // 4️⃣ Load submission
     const submission = await pool.query(
