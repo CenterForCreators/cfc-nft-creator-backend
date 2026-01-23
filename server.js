@@ -611,10 +611,7 @@ app.post("/api/mark-minted", async (req, res) => {
       "SELECT * FROM submissions WHERE id=$1",
       [id]
     );
-// 🛑 HARD STOP: already fully minted
-if (submission.rows[0].mint_status === "minted") {
-  return res.json({ ok: true, already_minted: true });
-}
+
     if (!submission.rows.length) {
       return res.status(404).json({ error: "Submission not found" });
     }
@@ -637,6 +634,10 @@ if (submission.rows[0].mint_status === "minted") {
       "UPDATE submissions SET nftoken_ids=$1, nftoken_id=$2 WHERE id=$3",
       [JSON.stringify(ids), nftoken_id, id]
     );
+    // 🛑 HARD STOP: already fully minted
+if (submission.rows[0].mint_status === "minted") {
+  return res.json({ ok: true, already_minted: true });
+}
 
     // 6️⃣ Finalize ONLY when fully minted
   if (ids.length >= batchQty) {
