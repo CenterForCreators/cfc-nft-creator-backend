@@ -634,13 +634,30 @@ app.post("/api/mark-minted", async (req, res) => {
       "UPDATE submissions SET nftoken_ids=$1, nftoken_id=$2 WHERE id=$3",
       [JSON.stringify(ids), nftoken_id, id]
     );
+    // ✅ RELOAD submission AFTER saving IDs (prevents stale mint_status / stale ids)
+const submissionFresh = await pool.query(
+  "SELECT mint_status, batch_qty, nftoken_ids FROM submissions WHERE id=$1",
+  [id]
+);
+
+const freshBatchQty = Number(submissionFresh.rows[0].batch_qty || 1);
+
+let freshIds = [];
+if (submissionFresh.rows[0].nftoken_ids) {
+  try {
+    freshIds = JSON.parse(submissionFresh.rows[0].nftoken_ids);
+  } catch {
+    freshIds = [];
+  }
+}
+
     // 🛑 HARD STOP: already fully minted
 if (submission.rows[0].mint_status === "minted") {
   return res.json({ ok: true, already_minted: true });
 }
 
     // 6️⃣ Finalize ONLY when fully minted
-  if (ids.length >= batchQty) {
+ if (freshIds.length >= freshBatchQty) {
       const r = await pool.query(
         "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
         [id]
