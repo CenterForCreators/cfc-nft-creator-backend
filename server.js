@@ -338,7 +338,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
  status, payment_status, mint_status, created_at,
  terms, price_xrp, price_rlusd, email, website, content_cid)
 
-      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
       `,
       [
