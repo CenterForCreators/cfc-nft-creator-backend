@@ -306,7 +306,7 @@ ${result.value}
       }
     );
 
-    res.json({ cid: uploadRes.data.IpfsHash });
+   res.json({ cid: uploadRes.data.IpfsHash, contentCid: uploadRes.data.IpfsHash });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Upload failed" });
@@ -318,10 +318,11 @@ ${result.value}
 // -------------------------------
 app.post("/api/submit", async (req, res) => {
   try {
-    const {
-      wallet, name, description, imageCid,
-      metadataCid, quantity, email, website
-    } = req.body;
+   const {
+  wallet, name, description, imageCid,
+  metadataCid, quantity, email, website,
+  contentCid
+} = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
 
@@ -342,12 +343,13 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
       RETURNING id
       `,
       [
-        wallet, name, description, imageCid, metadataCid, quantity,
-        new Date().toISOString(),
-        metadataJSON.terms || null,
-        metadataJSON.price_xrp || null,
-        metadataJSON.price_rlusd || null,
-        email, website
+       wallet, name, description, imageCid, metadataCid, quantity,
+new Date().toISOString(),
+metadataJSON.terms || null,
+metadataJSON.price_xrp || null,
+metadataJSON.price_rlusd || null,
+email, website,
+contentCid
       ]
     );
 
