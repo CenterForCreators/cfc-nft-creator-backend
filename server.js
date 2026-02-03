@@ -266,28 +266,6 @@ app.post("/api/upload", async (req, res) => {
     let fileBuffer = file.data;
 let fileName = file.name;
 
-// If Word file, convert to clean HTML automatically
-if (fileName.endsWith(".docx")) {
-  const result = await mammoth.convertToHtml({ buffer: fileBuffer });
-  const htmlTemplate = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;}
-h1{margin-top:40px;}
-img{max-width:100%;}
-</style>
-</head>
-<body>
-${result.value}
-</body>
-</html>
-  `;
-  fileBuffer = Buffer.from(htmlTemplate);
-  fileName = "content.html";
-}
 
     if (!file) return res.status(400).json({ error: "No file" });
 
