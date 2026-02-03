@@ -307,11 +307,6 @@ app.get("/api/view-content/:cid", async (req, res) => {
       { responseType: "arraybuffer" }
     );
 
-   const r = await axios.get(
-  `https://gateway.pinata.cloud/ipfs/${cid}`,
-  { responseType: "text" }
-);
-
 res.setHeader("Content-Type", "text/html");
 res.send(r.data);
  
