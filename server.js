@@ -322,7 +322,7 @@ app.get("/api/view-content/:cid", async (req, res) => {
     );
 
     // Convert Word → HTML on the fly
-    const result = await mammoth.convertToHtml({ buffer: r.data });
+  
 
     const htmlPage = `
 <!DOCTYPE html>
