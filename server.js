@@ -320,14 +320,15 @@ app.get("/api/view-content/:cid", async (req, res) => {
       { responseType: "text" }
     );
 
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(r.data);
 
   } catch (e) {
-    console.error(e);
+    console.error("view-content error:", e);
     res.status(500).send("Failed to load content");
   }
 });
+
 
 // -------------------------------
 // SUBMIT NFT
