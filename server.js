@@ -315,34 +315,13 @@ app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
 
-    // Fetch the original file from IPFS
     const r = await axios.get(
       `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { responseType: "arraybuffer" }
+      { responseType: "text" }
     );
 
-    // Convert Word → HTML on the fly
-  
-
-    const htmlPage = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;}
-h1{margin-top:40px;}
-img{max-width:100%;}
-</style>
-</head>
-<body>
-${result.value}
-</body>
-</html>
-    `;
-
     res.setHeader("Content-Type", "text/html");
-    res.send(htmlPage);
+    res.send(r.data);
 
   } catch (e) {
     console.error(e);
