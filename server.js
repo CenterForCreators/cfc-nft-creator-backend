@@ -266,6 +266,13 @@ app.post("/api/upload", async (req, res) => {
     let fileBuffer = file.data;
 let fileName = file.name;
 
+// Ensure ONLY original Word files are stored for content
+if (fileName.endsWith(".docx")) {
+  // leave as-is (store raw docx)
+} else {
+  // if someone uploads html or anything else, reject
+  return res.status(400).json({ error: "Content must be a .docx Word file" });
+}
 
     if (!file) return res.status(400).json({ error: "No file" });
 
