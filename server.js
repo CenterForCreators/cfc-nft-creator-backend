@@ -1,6 +1,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -315,20 +316,40 @@ app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
 
+    // Fetch the original file from IPFS
     const r = await axios.get(
       `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { responseType: "text" }
+      { responseType: "arraybuffer" }
     );
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(r.data);
+    // Convert Word → HTML on the fly
+    const result = await mammoth.convertToHtml({ buffer: r.data });
+
+    const htmlPage = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;}
+h1{margin-top:40px;}
+img{max-width:100%;}
+</style>
+</head>
+<body>
+${result.value}
+</body>
+</html>
+    `;
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(htmlPage);
 
   } catch (e) {
-    console.error("view-content error:", e);
+    console.error(e);
     res.status(500).send("Failed to load content");
   }
 });
-
 
 // -------------------------------
 // SUBMIT NFT
