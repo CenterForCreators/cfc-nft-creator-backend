@@ -307,28 +307,14 @@ app.get("/api/view-content/:cid", async (req, res) => {
       { responseType: "arraybuffer" }
     );
 
-    // Convert Word → HTML on the fly
-    const result = await mammoth.convertToHtml({ buffer: r.data });
+   const r = await axios.get(
+  `https://gateway.pinata.cloud/ipfs/${cid}`,
+  { responseType: "text" }
+);
 
-    const htmlPage = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;}
-h1{margin-top:40px;}
-img{max-width:100%;}
-</style>
-</head>
-<body>
-${result.value}
-</body>
-</html>
-    `;
-
-    res.setHeader("Content-Type", "text/html");
-    res.send(htmlPage);
+res.setHeader("Content-Type", "text/html");
+res.send(r.data);
+ 
 
   } catch (e) {
     console.error(e);
