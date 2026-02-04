@@ -301,37 +301,40 @@ app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
 
-    // 1️⃣ Fetch RAW .docx from IPFS
+    // Fetch the original file from IPFS
     const r = await axios.get(
-      `https://ipfs.io/ipfs/${cid}`,
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
       { responseType: "arraybuffer" }
     );
 
-    // 2️⃣ Convert Word → HTML here (the correct place)
+    // Convert Word → HTML on the fly
     const result = await mammoth.convertToHtml({ buffer: r.data });
 
-    // 3️⃣ Send readable page
+    const htmlPage = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body{font-family:Arial,sans-serif;max-width:900px;margin:40px auto;line-height:1.6;}
+h1{margin-top:40px;}
+img{max-width:100%;}
+</style>
+</head>
+<body>
+${result.value}
+</body>
+</html>
+    `;
+
     res.setHeader("Content-Type", "text/html");
-    res.send(`
-      <html>
-        <head>
-          <meta charset="UTF-8"/>
-          <style>
-            body{font-family:Arial;max-width:900px;margin:40px auto;line-height:1.6;}
-          </style>
-        </head>
-        <body>
-          ${result.value}
-        </body>
-      </html>
-    `);
+    res.send(htmlPage);
 
   } catch (e) {
     console.error(e);
     res.status(500).send("Failed to load content");
   }
 });
-
 
 // -------------------------------
 // SUBMIT NFT
