@@ -301,15 +301,13 @@ app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
 
-    // Fetch the original file from IPFS
     const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { responseType: "arraybuffer" }
+      `https://ipfs.io/ipfs/${cid}`,
+      { responseType: "text" }
     );
 
-res.setHeader("Content-Type", "text/html");
-res.send(r.data);
- 
+    res.setHeader("Content-Type", "text/html");
+    res.send(r.data);
 
   } catch (e) {
     console.error(e);
