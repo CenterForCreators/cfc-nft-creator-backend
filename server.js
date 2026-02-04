@@ -303,9 +303,9 @@ app.get("/api/view-content/:cid", async (req, res) => {
 
     // Fetch the original file from IPFS
     const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { responseType: "arraybuffer" }
-    );
+  `https://ipfs.io/ipfs/${cid}`,
+  { responseType: "arraybuffer" }
+);
 
     // Convert Word → HTML on the fly
     const result = await mammoth.convertToHtml({ buffer: r.data });
