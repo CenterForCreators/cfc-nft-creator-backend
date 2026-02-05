@@ -211,7 +211,7 @@ try {
     const cid = meta.rows[0].metadata_cid;
 
     const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
+  `https://gateway.pinata.cloud/ipfs/${cid}`,
       { timeout: 4000 }
     );
 
