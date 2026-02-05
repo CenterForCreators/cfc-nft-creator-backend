@@ -2,6 +2,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -211,7 +212,7 @@ try {
     const cid = meta.rows[0].metadata_cid;
 
     const r = await axios.get(
-  `https://gateway.pinata.cloud/ipfs/${cid}`,
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
       { timeout: 4000 }
     );
 
@@ -316,21 +317,6 @@ app.get("/api/view-content/:cid", async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).send("Failed to load content");
-  }
-});
-app.get("/api/ipfs/:cid", async (req, res) => {
-  try {
-    const cid = req.params.cid;
-
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { responseType: "arraybuffer" }
-    );
-
-    res.setHeader("Content-Type", r.headers["content-type"]);
-    res.send(r.data);
-  } catch (e) {
-    res.status(500).send("IPFS load failed");
   }
 });
 
