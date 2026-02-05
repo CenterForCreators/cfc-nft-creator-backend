@@ -318,6 +318,21 @@ app.get("/api/view-content/:cid", async (req, res) => {
     res.status(500).send("Failed to load content");
   }
 });
+app.get("/api/ipfs/:cid", async (req, res) => {
+  try {
+    const cid = req.params.cid;
+
+    const r = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
+      { responseType: "arraybuffer" }
+    );
+
+    res.setHeader("Content-Type", r.headers["content-type"]);
+    res.send(r.data);
+  } catch (e) {
+    res.status(500).send("IPFS load failed");
+  }
+});
 
 // -------------------------------
 // SUBMIT NFT
