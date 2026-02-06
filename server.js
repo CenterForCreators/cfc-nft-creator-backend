@@ -264,21 +264,10 @@ await pool.query(
 app.post("/api/upload", async (req, res) => {
   try {
     const file = req.files?.file;
-    let fileBuffer = file.data;
-let fileName = file.name;
-
-// Ensure ONLY original Word files are stored for content
-if (fileName.endsWith(".docx")) {
-  // leave as-is (store raw docx)
-} else {
-  // if someone uploads html or anything else, reject
-  return res.status(400).json({ error: "Content must be a .docx Word file" });
-}
-
     if (!file) return res.status(400).json({ error: "No file" });
 
     const form = new FormData();
-    form.append("file", fileBuffer, fileName);
+    form.append("file", file.data, file.name);
 
     const uploadRes = await axios.post(
       "https://api.pinata.cloud/pinning/pinFileToIPFS",
@@ -292,12 +281,13 @@ if (fileName.endsWith(".docx")) {
       }
     );
 
-   res.json({ cid: uploadRes.data.IpfsHash, contentCid: uploadRes.data.IpfsHash });
+    res.json({ cid: uploadRes.data.IpfsHash });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Upload failed" });
   }
 });
+
 app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
