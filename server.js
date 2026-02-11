@@ -309,6 +309,35 @@ app.get("/api/view-content/:cid", async (req, res) => {
     res.status(500).send("Failed to load content");
   }
 });
+app.get("/api/content-html/by-submission/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).send("Invalid submission id");
+
+    const r = await pool.query(
+      "SELECT content_cid FROM submissions WHERE id=$1",
+      [id]
+    );
+
+    const cid = r.rows?.[0]?.content_cid;
+    if (!cid) return res.status(404).send("No content_cid");
+
+    // Fetch RAW Word file from Pinata
+    const raw = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
+      { responseType: "arraybuffer" }
+    );
+
+    // Convert Word → HTML
+    const result = await mammoth.convertToHtml({ buffer: raw.data });
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(result.value);
+  } catch (e) {
+    console.error("content-html/by-submission error:", e);
+    res.status(500).send("Failed to load content");
+  }
+});
 
 // -------------------------------
 // SUBMIT NFT
