@@ -351,6 +351,7 @@ app.post("/api/submit", async (req, res) => {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
+    
   // 🔑 REQUIRED: link book content into metadata for reader
 if (contentCid) {
   metadataJSON.content_html = contentCid;
@@ -400,6 +401,22 @@ if (contentCid) {
 if (contentCid) {
   metadataJSON.content_html = contentCid;
 }
+    // Re-pin updated metadata JSON to Pinata
+const metaRes = await axios.post(
+  "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+  metadataJSON,
+  {
+    headers: {
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET,
+      "Content-Type": "application/json",
+    },
+  }
+);
+
+// Override metadataCid with the NEW one
+const finalMetadataCid = metaRes.data.IpfsHash;
+
     // ✅ Re-pin UPDATED metadata to IPFS
 const metaRes = await axios.post(
   "https://api.pinata.cloud/pinning/pinJSONToIPFS",
@@ -453,7 +470,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
       RETURNING id
       `,
       [
-       wallet, name, description, imageCid, metadataCid, quantity,
+       wallet, name, description, imageCid, finalMetadataCid, quantity,
 new Date().toISOString(),
 metadataJSON.terms || null,
 metadataJSON.price_xrp || null,
