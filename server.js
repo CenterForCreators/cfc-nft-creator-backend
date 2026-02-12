@@ -355,6 +355,21 @@ app.post("/api/submit", async (req, res) => {
 if (contentCid) {
   metadataJSON.content_html = contentCid;
 }
+    // ✅ Re-pin UPDATED metadata to IPFS
+const metaRes = await axios.post(
+  "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+  metadataJSON,
+  {
+    headers: {
+      "Content-Type": "application/json",
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET,
+    },
+  }
+);
+
+const finalMetadataCid = metaRes.data.IpfsHash;
+
 // -------------------------------
 // 🔑 GENERATE content_html FROM Word DOC (REQUIRED)
 // -------------------------------
@@ -385,7 +400,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
     const result = await pool.query(
       `
      INSERT INTO submissions
-(creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
+(creator_wallet, name, description, image_cid, finalMetadataCid, batch_qty,
  status, payment_status, mint_status, created_at,
  terms, price_xrp, price_rlusd, email, website, content_cid)
 
