@@ -351,6 +351,11 @@ app.post("/api/submit", async (req, res) => {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
+  // 🔑 REQUIRED: link book content into metadata for reader
+if (contentCid) {
+  metadataJSON.content_html = contentCid;
+}
+  
    // ===============================
 // AUTO-CONVERT WORD → HTML + PIN
 // ===============================
