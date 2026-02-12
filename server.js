@@ -351,6 +351,46 @@ app.post("/api/submit", async (req, res) => {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
+   // ===============================
+// AUTO-CONVERT WORD → HTML + PIN
+// ===============================
+let htmlCid = null;
+
+if (contentCid) {
+  try {
+    // 1. Fetch Word file from IPFS
+    const wordRes = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${contentCid}`,
+      { responseType: "arraybuffer" }
+    );
+
+    // 2. Convert Word → HTML
+    const htmlResult = await mammoth.convertToHtml({ buffer: wordRes.data });
+    const html = htmlResult.value;
+
+    // 3. Pin HTML to Pinata
+    const htmlUpload = await axios.post(
+      "https://api.pinata.cloud/pinning/pinFileToIPFS",
+      html,
+      {
+        headers: {
+          "Content-Type": "text/html",
+          pinata_api_key: PINATA_API_KEY,
+          pinata_secret_api_key: PINATA_API_SECRET
+        }
+      }
+    );
+
+    htmlCid = htmlUpload.data.IpfsHash;
+
+    // 4. Inject HTML CID into metadata (THIS IS THE KEY)
+    metadataJSON.content_html = htmlCid;
+
+  } catch (e) {
+    console.error("HTML conversion failed:", e);
+  }
+}
+ 
     // 🔑 Ensure reader can load book HTML
 if (contentCid) {
   metadataJSON.content_html = contentCid;
