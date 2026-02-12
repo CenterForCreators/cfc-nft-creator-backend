@@ -351,6 +351,10 @@ app.post("/api/submit", async (req, res) => {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
+    // 🔑 Ensure reader can load book HTML
+if (contentCid) {
+  metadataJSON.content_html = contentCid;
+}
 // -------------------------------
 // 🔑 GENERATE content_html FROM Word DOC (REQUIRED)
 // -------------------------------
