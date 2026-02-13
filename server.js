@@ -347,7 +347,7 @@ app.post("/api/submit", async (req, res) => {
   try {
    const {
   wallet, name, description, imageCid,
-  metadataCid, quantity, email, website,
+ finalMetadataCid, quantity, email, website,
   contentCid
 } = req.body;
 
@@ -363,15 +363,51 @@ if (contentCid) {
     );
 
     const result = await mammoth.convertToHtml({ buffer: r.data });
+// -------------------------------
+// 🔑 GENERATE content_html CID FROM Word DOC (REQUIRED)
+// -------------------------------
+if (contentCid) {
+  try {
+    // 1) Fetch the DOCX from IPFS
+    const r = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${contentCid}`,
+      { responseType: "arraybuffer" }
+    );
 
-    // Save HTML directly into metadata
-    metadataJSON.content_html = result.value;
+    // 2) Convert DOCX → HTML
+    const result = await mammoth.convertToHtml({ buffer: r.data });
+    const html = result.value || "";
+
+    // 3) Pin HTML to Pinata as a real file
+    const form = new FormData();
+    form.append("file", Buffer.from(html, "utf-8"), {
+      filename: "book.html",
+      contentType: "text/html"
+    });
+
+    const htmlUpload = await axios.post(
+      "https://api.pinata.cloud/pinning/pinFileToIPFS",
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          pinata_api_key: PINATA_API_KEY,
+          pinata_secret_api_key: PINATA_API_SECRET,
+        },
+      }
+    );
+
+    const htmlCid = htmlUpload.data.IpfsHash;
+
+    // ✅ This is what reader.html expects:
+    metadataJSON.content_html = `ipfs://${htmlCid}`;
 
   } catch (e) {
     console.error("Failed to generate content_html:", e);
   }
 }
 
+    
 // -------------------------------
 // LEARN-TO-EARN SAFETY (NO CHANGE)
 // -------------------------------
@@ -435,6 +471,20 @@ async function sendCfcReward({ destination, amount }) {
 
   return result.result.hash;
 }
+// ✅ Pin UPDATED metadata JSON (with content_html) to IPFS
+const metaRes = await axios.post(
+  "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+  metadataJSON,
+  {
+    headers: {
+      "Content-Type": "application/json",
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET,
+    },
+  }
+);
+
+const finalMetadataCid = metaRes.data.IpfsHash;
 
 // -------------------------------
 // ADMIN ROUTES (UNCHANGED)
