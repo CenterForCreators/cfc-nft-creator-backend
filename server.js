@@ -301,6 +301,40 @@ app.get("/api/view-content/:cid", async (req, res) => {
 
     // Convert Word → HTML here (THIS is the key)
     const result = await mammoth.convertToHtml({ buffer: r.data });
+const html = result.value || "";
+
+// ⬇️ NEW: convert HTML → EPUB
+const epub = await import("epub-gen");
+
+const epubPath = "/tmp/book.epub";
+
+await new epub.default(
+  {
+    title: metadataJSON.name || "Book",
+    author: metadataJSON.author || "Unknown",
+    content: [{ data: html }]
+  },
+  epubPath
+);
+
+// ⬇️ Upload EPUB to Pinata
+const epubForm = new FormData();
+epubForm.append("file", fs.createReadStream(epubPath));
+
+const epubUpload = await axios.post(
+  "https://api.pinata.cloud/pinning/pinFileToIPFS",
+  epubForm,
+  {
+    headers: {
+      ...epubForm.getHeaders(),
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET
+    }
+  }
+);
+
+// ⬇️ SAVE EPUB CID INTO METADATA
+metadataJSON.content_epub = `ipfs://${epubUpload.data.IpfsHash}`;
 
     res.setHeader("Content-Type", "text/html");
     res.send(result.value);
