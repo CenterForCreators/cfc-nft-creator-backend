@@ -339,102 +339,80 @@ app.get("/api/content-html/by-submission/:id", async (req, res) => {
     res.status(500).send("Failed to load content");
   }
 });
-
 // -------------------------------
-// SUBMIT NFT
+// SUBMIT NFT (RESTORED WORKING VERSION)
 // -------------------------------
 app.post("/api/submit", async (req, res) => {
   try {
-   const {
-  wallet, name, description, imageCid,
- finalMetadataCid, quantity, email, website,
-  contentCid
-} = req.body;
+    const {
+      wallet,
+      name,
+      description,
+      imageCid,
+      metadataCid,
+      quantity,
+      email,
+      website,
+      contentCid
+    } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
 
-  } catch (e) {
-    console.error("Failed to generate content_html:", e);
-  }
-}
-  
-// -------------------------------
-// LEARN-TO-EARN SAFETY (NO CHANGE)
-// -------------------------------
-if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
-    delete metadataJSON.learn;
-}
+    // Generate content_html from Word (same behavior as NFT 79)
+    if (contentCid) {
+      try {
+        const r = await axios.get(
+          `https://gateway.pinata.cloud/ipfs/${contentCid}`,
+          { responseType: "arraybuffer" }
+        );
 
-   const dbResult = await pool.query(...)
+        const htmlResult = await mammoth.convertToHtml({ buffer: r.data });
+        metadataJSON.content_html = htmlResult.value;
+
+      } catch (e) {
+        console.error("Failed to generate content_html:", e);
+      }
+    }
+
+    // Learn-to-Earn safety (unchanged)
+    if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
+      delete metadataJSON.learn;
+    }
+
+    const dbResult = await pool.query(
       `
-     INSERT INTO submissions
-(creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
- status, payment_status, mint_status, created_at,
- terms, price_xrp, price_rlusd, email, website, content_cid)
-
-     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13)
+      INSERT INTO submissions
+      (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
+       status, payment_status, mint_status, created_at,
+       terms, price_xrp, price_rlusd, email, website, content_cid)
+      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
       `,
       [
-       wallet, name, description, imageCid, metadataCid, quantity,
-new Date().toISOString(),
-metadataJSON.terms || null,
-metadataJSON.price_xrp || null,
-metadataJSON.price_rlusd || null,
-email, website,
-contentCid
+        wallet,
+        name,
+        description,
+        imageCid,
+        metadataCid,
+        quantity,
+        new Date().toISOString(),
+        metadataJSON.terms || null,
+        metadataJSON.price_xrp || null,
+        metadataJSON.price_rlusd || null,
+        email,
+        website,
+        contentCid
       ]
     );
 
-    res.json({ submitted: true, id: result.rows[0].id });
+    res.json({ submitted: true, id: dbResult.rows[0].id });
+
   } catch (e) {
-    console.error(e);
+    console.error("Submission failed:", e);
     res.status(500).json({ error: "Submission failed" });
   }
 });
-async function sendCfcReward({ destination, amount }) {
-  const client = new xrpl.Client(XRPL_NETWORK);
-  await client.connect();
 
-  const wallet = xrpl.Wallet.fromSeed(CFC_DISTRIBUTOR_SEED);
-
-  const tx = {
-    TransactionType: "Payment",
-    Account: wallet.classicAddress,
-    Destination: destination,
-    Amount: {
-      currency: CFC_CURRENCY,
-      issuer: CFC_ISSUER,
-      value: String(amount)
-    }
-  };
-
-  const prepared = await client.autofill(tx);
-  const signed = wallet.sign(prepared);
-  const result = await client.submitAndWait(signed.tx_blob);
-
-  await client.disconnect();
-
-  if (result.result.meta.TransactionResult !== "tesSUCCESS") {
-    throw new Error("XRPL payment failed");
-  }
-
-  return result.result.hash;
-}
-// ✅ Pin UPDATED metadata JSON (with content_html) to IPFS
-const metaRes = await axios.post(
-  "https://api.pinata.cloud/pinning/pinJSONToIPFS",
-  metadataJSON,
-  {
-    headers: {
-      "Content-Type": "application/json",
-      pinata_api_key: PINATA_API_KEY,
-      pinata_secret_api_key: PINATA_API_SECRET,
-    },
-  }
-);
-
-const finalMetadataCid = metaRes.data.IpfsHash;
 
 // -------------------------------
 // ADMIN ROUTES (UNCHANGED)
