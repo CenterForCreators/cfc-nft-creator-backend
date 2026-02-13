@@ -352,62 +352,12 @@ app.post("/api/submit", async (req, res) => {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
-// -------------------------------
-// 🔑 GENERATE content_html FROM Word DOC (REQUIRED)
-// -------------------------------
-if (contentCid) {
-  try {
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${contentCid}`,
-      { responseType: "arraybuffer" }
-    );
-
-    const result = await mammoth.convertToHtml({ buffer: r.data });
-// -------------------------------
-// 🔑 GENERATE content_html CID FROM Word DOC (REQUIRED)
-// -------------------------------
-if (contentCid) {
-  try {
-    // 1) Fetch the DOCX from IPFS
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${contentCid}`,
-      { responseType: "arraybuffer" }
-    );
-
-    // 2) Convert DOCX → HTML
-    const result = await mammoth.convertToHtml({ buffer: r.data });
-    const html = result.value || "";
-
-    // 3) Pin HTML to Pinata as a real file
-    const form = new FormData();
-    form.append("file", Buffer.from(html, "utf-8"), {
-      filename: "book.html",
-      contentType: "text/html"
-    });
-
-    const htmlUpload = await axios.post(
-      "https://api.pinata.cloud/pinning/pinFileToIPFS",
-      form,
-      {
-        headers: {
-          ...form.getHeaders(),
-          pinata_api_key: PINATA_API_KEY,
-          pinata_secret_api_key: PINATA_API_SECRET,
-        },
-      }
-    );
-
-    const htmlCid = htmlUpload.data.IpfsHash;
-
-    // ✅ This is what reader.html expects:
-    metadataJSON.content_html = `ipfs://${htmlCid}`;
 
   } catch (e) {
     console.error("Failed to generate content_html:", e);
   }
 }
-
-    
+  
 // -------------------------------
 // LEARN-TO-EARN SAFETY (NO CHANGE)
 // -------------------------------
@@ -415,7 +365,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
     delete metadataJSON.learn;
 }
 
-    const result = await pool.query(
+   const dbResult = await pool.query(...)
       `
      INSERT INTO submissions
 (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
