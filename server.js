@@ -383,7 +383,7 @@ app.post("/api/submit", async (req, res) => {
       name,
       description,
       imageCid,
-      metadataCid,
+      finalMetadataCid,
       quantity,
       email,
       website,
@@ -402,6 +402,31 @@ app.post("/api/submit", async (req, res) => {
 
         const htmlResult = await mammoth.convertToHtml({ buffer: r.data });
         metadataJSON.content_html = htmlResult.value;
+        // ✅ Pin the HTML as a real file to IPFS (scalable)
+        const html = htmlResult.value || "";
+
+        const form = new FormData();
+        form.append("file", Buffer.from(html, "utf-8"), {
+          filename: "book.html",
+          contentType: "text/html"
+        });
+
+        const htmlUpload = await axios.post(
+          "https://api.pinata.cloud/pinning/pinFileToIPFS",
+          form,
+          {
+            headers: {
+              ...form.getHeaders(),
+              pinata_api_key: PINATA_API_KEY,
+              pinata_secret_api_key: PINATA_API_SECRET,
+            },
+          }
+        );
+
+        const htmlCid = htmlUpload.data.IpfsHash;
+
+        // ✅ Store a CID pointer in metadata (what reader.html expects)
+        metadataJSON.content_html = `ipfs://${htmlCid}`;
 
       } catch (e) {
         console.error("Failed to generate content_html:", e);
@@ -412,6 +437,20 @@ app.post("/api/submit", async (req, res) => {
     if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
       delete metadataJSON.learn;
     }
+    // ✅ Pin UPDATED metadata JSON (now includes content_html)
+    const metaRes = await axios.post(
+      "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+      metadataJSON,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          pinata_api_key: PINATA_API_KEY,
+          pinata_secret_api_key: PINATA_API_SECRET,
+        },
+      }
+    );
+
+    const finalMetadataCid = metaRes.data.IpfsHash;
 
     const dbResult = await pool.query(
       `
