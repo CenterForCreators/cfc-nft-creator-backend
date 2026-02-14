@@ -407,7 +407,6 @@ app.post("/api/submit", async (req, res) => {
         console.error("Failed to generate content_html:", e);
       }
     }
-metadataJSON.content_html = `ipfs://${htmlCid}`;
 
     // Learn-to-Earn safety (unchanged)
     if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
