@@ -383,7 +383,7 @@ app.post("/api/submit", async (req, res) => {
       name,
       description,
       imageCid,
-      finalMetadataCid
+      finalMetadataCid,
       quantity,
       email,
       website,
