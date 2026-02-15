@@ -383,7 +383,7 @@ app.post("/api/submit", async (req, res) => {
       name,
       description,
       imageCid,
-      metadataCid,
+      finalMetadataCid
       quantity,
       email,
       website,
@@ -402,6 +402,20 @@ app.post("/api/submit", async (req, res) => {
 
         const htmlResult = await mammoth.convertToHtml({ buffer: r.data });
         metadataJSON.content_html = htmlResult.value;
+        const metaRes = await axios.post(
+  "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+  metadataJSON,
+  {
+    headers: {
+      "Content-Type": "application/json",
+      pinata_api_key: PINATA_API_KEY,
+      pinata_secret_api_key: PINATA_API_SECRET,
+    },
+  }
+);
+
+const finalMetadataCid = metaRes.data.IpfsHash;
+
         // ✅ Pin the HTML as a real file to IPFS (scalable)
         const html = htmlResult.value || "";
 
