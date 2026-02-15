@@ -383,6 +383,7 @@ app.post("/api/submit", async (req, res) => {
       name,
       description,
       imageCid,
+      metadataCid,
       quantity,
       email,
       website,
@@ -413,7 +414,8 @@ app.post("/api/submit", async (req, res) => {
   }
 );
 
-const finalMetadataCid = metaRes.data.IpfsHash;
+const newMetadataCid = metaRes.data.IpfsHash;
+
 
         // ✅ Pin the HTML as a real file to IPFS (scalable)
         const html = htmlResult.value || "";
@@ -479,7 +481,7 @@ const finalMetadataCid = metaRes.data.IpfsHash;
         name,
         description,
         imageCid,
-        metadataCid,
+        MetadataCid,
         quantity,
         new Date().toISOString(),
         metadataJSON.terms || null,
