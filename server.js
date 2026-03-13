@@ -12,6 +12,7 @@ import mammoth from "mammoth";
 import xrpl from "xrpl";
 import dotenv from "dotenv";
 import pg from "pg";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
@@ -43,7 +44,39 @@ const XRPL_NETWORK = process.env.XRPL_NETWORK || "wss://s2.ripple.com";
 const CFC_DISTRIBUTOR_SEED = process.env.CFC_DISTRIBUTOR_SEED;
 const CFC_ISSUER = process.env.CFC_ISSUER;
 const CFC_CURRENCY = "CFC";
+const transporter = nodemailer.createTransport({
+  host: "smtpout.secureserver.net",
+  port: 587,
+  secure: false,
+  auth: {
+    user: "christie@centerforcreators.com",
+    pass: process.env.EMAIL_PASS
+  }
+});
 
+async function sendAdminSubmissionEmail(data) {
+  try {
+    await transporter.sendMail({
+      from: '"CFC NFT Creator" <christie@centerforcreators.com>',
+      to: "christie@centerforcreators.com",
+      subject: "New NFT Submission Needs Approval",
+      text: `
+A new NFT has been submitted to the CFC marketplace.
+
+Name: ${data.name}
+Creator Wallet: ${data.wallet}
+Email: ${data.email || "Not provided"}
+Website: ${data.website || "Not provided"}
+
+Login to your admin dashboard to review it.
+`
+    });
+
+    console.log("Admin email sent");
+  } catch (err) {
+    console.error("Email failed:", err);
+  }
+}
 
 // -------------------------------
 // APP INIT
@@ -343,6 +376,10 @@ app.get("/api/content-html/by-submission/:id", async (req, res) => {
 // SUBMIT NFT
 // -------------------------------
 app.post("/api/submit", async (req, res) => {
+  // Simple bot protection
+if (req.body.website_url) {
+  return res.status(400).json({ error: "Spam detected" });
+}
   try {
    const {
   wallet, name, description, imageCid,
@@ -398,7 +435,12 @@ email, website,
 contentCid
       ]
     );
-
+await sendAdminSubmissionEmail({
+  name,
+  wallet,
+  email,
+  website
+});
     res.json({ submitted: true, id: result.rows[0].id });
   } catch (e) {
     console.error(e);
@@ -468,7 +510,7 @@ app.get("/api/admin/learn-activity", async (req, res) => {
   }
 });
 
-app.post("/api/admin/approve", async (req, res) => {
+ app.post("/api/admin/approve", async (req, res) => {
   const { id, password } = req.body;
   if (password !== ADMIN_PASSWORD)
     return res.status(403).json({ error: "Unauthorized" });
@@ -477,6 +519,7 @@ app.post("/api/admin/approve", async (req, res) => {
     "UPDATE submissions SET status='approved', rejection_reason=NULL WHERE id=$1",
     [id]
   );
+
   res.json({ ok: true });
 });
 
