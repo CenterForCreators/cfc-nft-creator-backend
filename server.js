@@ -12,7 +12,6 @@ import mammoth from "mammoth";
 import xrpl from "xrpl";
 import dotenv from "dotenv";
 import pg from "pg";
-import nodemailer from "nodemailer";
 import { Resend } from "resend";
 
 dotenv.config();
@@ -45,34 +44,29 @@ const XRPL_NETWORK = process.env.XRPL_NETWORK || "wss://s2.ripple.com";
 const CFC_DISTRIBUTOR_SEED = process.env.CFC_DISTRIBUTOR_SEED;
 const CFC_ISSUER = process.env.CFC_ISSUER;
 const CFC_CURRENCY = "CFC";
-const transporter = nodemailer.createTransport({
-  host: "smtpout.secureserver.net",
-  port: 465,
-  secure: true,
-  auth: {
-    user: "christie@centerforcreators.com",
-    pass: process.env.EMAIL_PASS
-  }
-});
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 async function sendAdminSubmissionEmail(data) {
   try {
-    await transporter.sendMail({
-      from: '"CFC NFT Creator" <christie@centerforcreators.com>',
-      to: "christie@centerforcreators.com",
+
+    await resend.emails.send({
+      from: "CFC NFT Creator <christie@centerforcreators.com>",
+      to: ["christie@centerforcreators.com"],
       subject: "New NFT Submission Needs Approval",
-      text: `
-A new NFT has been submitted to the CFC marketplace.
+      html: `
+      <h3>New NFT Submitted</h3>
 
-Name: ${data.name}
-Creator Wallet: ${data.wallet}
-Email: ${data.email || "Not provided"}
-Website: ${data.website || "Not provided"}
+      <p><b>Name:</b> ${data.name}</p>
+      <p><b>Creator Wallet:</b> ${data.wallet}</p>
+      <p><b>Email:</b> ${data.email || "Not provided"}</p>
+      <p><b>Website:</b> ${data.website || "Not provided"}</p>
 
-Login to your admin dashboard to review it.
-`
+      <p>Login to your admin dashboard to review it.</p>
+      `
     });
 
     console.log("Admin email sent");
+
   } catch (err) {
     console.error("Email failed:", err);
   }
