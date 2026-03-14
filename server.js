@@ -46,14 +46,13 @@ const CFC_ISSUER = process.env.CFC_ISSUER;
 const CFC_CURRENCY = "CFC";
 const transporter = nodemailer.createTransport({
   host: "smtpout.secureserver.net",
-  port: 587,
-  secure: false,
+  port: 465,
+  secure: true,
   auth: {
     user: "christie@centerforcreators.com",
     pass: process.env.EMAIL_PASS
   }
 });
-
 async function sendAdminSubmissionEmail(data) {
   try {
     await transporter.sendMail({
