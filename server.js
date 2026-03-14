@@ -388,6 +388,10 @@ if (req.body.website_url) {
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
+    // Ensure reader always has a valid content reference
+if (contentCid) {
+  metadataJSON.content_html = contentCid;
+}
 // -------------------------------
 // 🔑 GENERATE content_html FROM Word DOC (REQUIRED)
 // -------------------------------
