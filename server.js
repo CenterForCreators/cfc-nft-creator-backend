@@ -13,6 +13,7 @@ import xrpl from "xrpl";
 import dotenv from "dotenv";
 import pg from "pg";
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 dotenv.config();
 
