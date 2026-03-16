@@ -375,10 +375,10 @@ if (req.body.website_url) {
   return res.status(400).json({ error: "Spam detected" });
 }
   try {
-   const {
+ const {
   wallet, name, description, imageCid,
   metadataCid, quantity, email, website,
-  contentCid
+  contentCid, category
 } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
@@ -418,9 +418,9 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
      INSERT INTO submissions
 (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
  status, payment_status, mint_status, created_at,
- terms, price_xrp, price_rlusd, email, website, content_cid)
+ terms, price_xrp, price_rlusd, email, website, content_cid, category)
 
-     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13)
+     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id
       `,
       [
@@ -430,7 +430,7 @@ metadataJSON.terms || null,
 metadataJSON.price_xrp || null,
 metadataJSON.price_rlusd || null,
 email, website,
-contentCid
+contentCid, category
       ]
     );
 await sendAdminSubmissionEmail({
