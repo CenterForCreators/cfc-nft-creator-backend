@@ -773,7 +773,7 @@ if (submission.rows[0].mint_status === "minted") {
 }
 
     // 6️⃣ Finalize ONLY when fully minted
- if (freshIds.length >= freshBatchQty) {
+
       const r = await pool.query(
         "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
         [id]
