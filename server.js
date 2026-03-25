@@ -784,7 +784,7 @@ if (submission.rows[0].mint_status === "minted") {
         submission_id: r.rows[0].id,
         name: r.rows[0].name,
         description: r.rows[0].description || "",
-        category: r.rows[0].category,
+        category: metadataJSON.category,
         image_cid: r.rows[0].image_cid,
         metadata_cid: r.rows[0].metadata_cid,
         price_xrp: r.rows[0].price_xrp,
