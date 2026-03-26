@@ -3,6 +3,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -773,41 +774,42 @@ if (submission.rows[0].mint_status === "minted") {
 }
 
     // 6️⃣ Finalize ONLY when fully minted
-
+ if (freshIds.length >= freshBatchQty) {
       const r = await pool.query(
         "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
         [id]
       );
-try {
-  await axios.post(MARKETPLACE_BACKEND, {
-    submission_id: r.rows[0].id,
-    name: r.rows[0].name,
-    description: r.rows[0].description || "",
-    category: "", // 👈 IMPORTANT (temporary safe fix)
-    image_cid: r.rows[0].image_cid,
-    metadata_cid: r.rows[0].metadata_cid,
-    price_xrp: r.rows[0].price_xrp,
-    price_rlusd: r.rows[0].price_rlusd,
-    creator_wallet: r.rows[0].creator_wallet,
-    terms: r.rows[0].terms || "",
-    website: r.rows[0].website || "",
-    quantity: batchQty
-  });
 
-  await pool.query(
-    "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-    [id]
-  );
+      // 7️⃣ Send ONCE to marketplace
+      await axios.post(MARKETPLACE_BACKEND, {
+        submission_id: r.rows[0].id,
+        name: r.rows[0].name,
+        description: r.rows[0].description || "",
+       category: metadataJSON.category,
+        image_cid: r.rows[0].image_cid,
+        metadata_cid: r.rows[0].metadata_cid,
+        price_xrp: r.rows[0].price_xrp,
+        price_rlusd: r.rows[0].price_rlusd,
+        creator_wallet: r.rows[0].creator_wallet,
+        terms: r.rows[0].terms || "",
+        website: r.rows[0].website || "",
+        quantity: batchQty
+      });
 
-} catch (e) {
-  console.error("Marketplace send failed:", e);
-}
-res.json({ ok: true });   
-    } catch (e) {
-  console.error("mark-minted error:", e);
-  res.status(500).json({ error: "Failed to mark minted" });
-}
+      await pool.query(
+        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+        [id]
+      );
+    }
+
+    res.json({ ok: true });
+
+  } catch (e) {
+    console.error("mark-minted error:", e);
+    res.status(500).json({ error: "Failed to mark minted" });
+  }
 });
+   
 // -------------------------------
 // SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
 // -------------------------------
