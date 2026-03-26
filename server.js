@@ -778,7 +778,7 @@ if (submission.rows[0].mint_status === "minted") {
         "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
         [id]
       );
-
+try {
       // 7️⃣ Send ONCE to marketplace
       await axios.post(MARKETPLACE_BACKEND, {
         submission_id: r.rows[0].id,
