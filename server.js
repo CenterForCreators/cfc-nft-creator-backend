@@ -803,6 +803,11 @@ try {
   console.error("Marketplace send failed:", e);
 }
 res.json({ ok: true });   
+    } catch (e) {
+  console.error("mark-minted error:", e);
+  res.status(500).json({ error: "Failed to mark minted" });
+}
+});
 // -------------------------------
 // SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
 // -------------------------------
