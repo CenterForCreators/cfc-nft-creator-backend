@@ -802,7 +802,7 @@ try {
 } catch (e) {
   console.error("Marketplace send failed:", e);
 }
-   
+res.json({ ok: true });   
 // -------------------------------
 // SET REGULAR KEY (ONE-TIME CREATOR APPROVAL)
 // -------------------------------
