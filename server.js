@@ -773,35 +773,32 @@ if (submission.rows[0].mint_status === "minted") {
   return res.json({ ok: true, already_minted: true });
 }
 
-    // 6️⃣ Finalize ONLY when fully minted
- if (freshIds.length >= freshBatchQty) {
-      const r = await pool.query(
-        "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
-        [id]
-      );
+  // 6️⃣ Finalize ONLY when fully minted
+const r = await pool.query(
+  "UPDATE submissions SET mint_status='minted' WHERE id=$1 RETURNING *",
+  [id]
+);
 
-      // 7️⃣ Send ONCE to marketplace
-      await axios.post(MARKETPLACE_BACKEND, {
-        submission_id: r.rows[0].id,
-        name: r.rows[0].name,
-        description: r.rows[0].description || "",
-       category: r.rows[0].category,
-        image_cid: r.rows[0].image_cid,
-        metadata_cid: r.rows[0].metadata_cid,
-        price_xrp: r.rows[0].price_xrp,
-        price_rlusd: r.rows[0].price_rlusd,
-        creator_wallet: r.rows[0].creator_wallet,
-        terms: r.rows[0].terms || "",
-        website: r.rows[0].website || "",
-        quantity: batchQty
-      });
+// 7️⃣ Send ONCE to marketplace
+await axios.post(MARKETPLACE_BACKEND, {
+  submission_id: r.rows[0].id,
+  name: r.rows[0].name,
+  description: r.rows[0].description || "",
+  category: r.rows[0].category,
+  image_cid: r.rows[0].image_cid,
+  metadata_cid: r.rows[0].metadata_cid,
+  price_xrp: r.rows[0].price_xrp,
+  price_rlusd: r.rows[0].price_rlusd,
+  creator_wallet: r.rows[0].creator_wallet,
+  terms: r.rows[0].terms || "",
+  website: r.rows[0].website || "",
+  quantity: batchQty
+});
 
-      await pool.query(
-        "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
-        [id]
-      );
-    }
-
+await pool.query(
+  "UPDATE submissions SET sent_to_marketplace=true WHERE id=$1",
+  [id]
+); 
     res.json({ ok: true });
 
   } catch (e) {
