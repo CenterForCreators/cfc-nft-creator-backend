@@ -4,6 +4,7 @@
 
 
 
+
 import express from "express";
 import cors from "cors";
 import fileUpload from "express-fileupload";
@@ -377,7 +378,7 @@ if (req.body.website_url) {
 }
   try {
  const {
-  wallet, name, description, image_cid,
+  wallet, name, description, imageCid || req.body.image_cid ,
   metadataCid, quantity, email, website,
   contentCid, category
 } = req.body;
@@ -425,7 +426,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
       RETURNING id
       `,
       [
-       wallet, name, description, image_cid, metadataCid, quantity,
+       wallet, name, description, imageCid || req.body.image_cid, metadataCid, quantity,
 new Date().toISOString(),
 metadataJSON.terms || null,
 metadataJSON.price_xrp || null,
