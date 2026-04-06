@@ -377,7 +377,7 @@ if (req.body.website_url) {
 }
   try {
  const {
-  wallet, name, description, imageCid,
+  wallet, name, description, image_cid,
   metadataCid, quantity, email, website,
   contentCid, category
 } = req.body;
@@ -425,7 +425,7 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
       RETURNING id
       `,
       [
-       wallet, name, description, imageCid, metadataCid, quantity,
+       wallet, name, description, image_cid, metadataCid, quantity,
 new Date().toISOString(),
 metadataJSON.terms || null,
 metadataJSON.price_xrp || null,
