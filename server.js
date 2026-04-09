@@ -279,12 +279,33 @@ await pool.query(
   ]
 );
 
+// AUTO PAYOUT (CORRECT PLACE)
+try {
+  const txHash = await sendCfcReward({
+    destination: wallet,
+    amount: tokensEarned
+  });
 
-    res.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Learn-to-Earn failed" });
-  }
+  await pool.query(
+    `
+    UPDATE learn_rewards_ledger
+    SET tokens_paid = tokens_earned,
+        tx_hash = $2
+    WHERE wallet=$1 AND submission_id=$3 AND action_ref=$4
+    `,
+    [wallet, txHash, submission_id, action_ref]
+  );
+
+} catch (e) {
+  console.error("Auto payout failed:", e);
+}
+
+res.json({ ok: true });
+
+} catch (e) {
+  console.error(e);
+  res.status(500).json({ error: "Learn-to-Earn failed" });
+}
 });
 
 // -------------------------------
@@ -376,12 +397,16 @@ app.post("/api/submit", async (req, res) => {
 if (req.body.website_url) {
   return res.status(400).json({ error: "Spam detected" });
 }
-  try {
- const {
-  wallet, name, description, imageCid || req.body.image_cid ,
-  metadataCid, quantity, email, website,
-  contentCid, category
-} = req.body;
+try {
+  const {
+    imageCid,
+    metadataCid,
+    quantity,
+    email,
+    website,
+    contentCid,
+    category
+  } = req.body;
 
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
     // Ensure reader always has a valid content reference
