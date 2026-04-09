@@ -398,16 +398,19 @@ if (req.body.website_url) {
   return res.status(400).json({ error: "Spam detected" });
 }
 try {
-  const {
-    imageCid,
-    metadataCid,
-    quantity,
-    email,
-    website,
-    contentCid,
-    category
-  } = req.body;
-
+const {
+  wallet,
+  name,
+  description,
+  imageCid,
+  metadataCid,
+  quantity,
+  email,
+  website,
+  contentCid,
+  category
+} = req.body;
+  
     const metadataJSON = JSON.parse(req.body.metadata || "{}");
     // Ensure reader always has a valid content reference
 if (contentCid) {
