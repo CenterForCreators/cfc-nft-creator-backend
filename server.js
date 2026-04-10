@@ -339,12 +339,20 @@ app.get("/api/metadata/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
 
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { timeout: 5000 }
-    );
+    try {
+      const r = await axios.get(
+        `https://gateway.pinata.cloud/ipfs/${cid}`,
+        { timeout: 5000 }
+      );
+      return res.json(r.data);
+    } catch {
+      const fallback = await axios.get(
+        `https://ipfs.io/ipfs/${cid}`,
+        { timeout: 5000 }
+      );
+      return res.json(fallback.data);
+    }
 
-    res.json(r.data);
   } catch (e) {
     console.error("metadata proxy error:", e);
     res.status(500).json({ error: "Failed to load metadata" });
