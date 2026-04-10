@@ -394,8 +394,13 @@ html = html.replace(
 );
 
 res.setHeader("Content-Type", "text/html");
-res.send(html);  
-   });
+res.send(html);
+
+} catch (e) {
+  console.error("content-html/by-submission error:", e);
+  res.status(500).send("Failed to load content");
+}
+});
 app.get("/api/metadata/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
