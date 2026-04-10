@@ -474,7 +474,7 @@ metadataJSON.terms || null,
 metadataJSON.price_xrp || null,
 metadataJSON.price_rlusd || null,
 email, website,
-contentCid, category
+content_cid, category, metadata_json)
       ]
     );
 await sendAdminSubmissionEmail({
