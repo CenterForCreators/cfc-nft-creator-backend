@@ -337,7 +337,21 @@ app.post("/api/upload", async (req, res) => {
     res.status(500).json({ error: "Upload failed" });
   }
 });
+app.get("/api/metadata/:cid", async (req, res) => {
+  try {
+    const cid = req.params.cid;
 
+    const r = await axios.get(
+      `https://gateway.pinata.cloud/ipfs/${cid}`,
+      { timeout: 5000 }
+    );
+
+    res.json(r.data);
+  } catch (e) {
+    console.error("metadata proxy error:", e);
+    res.status(500).json({ error: "Failed to load metadata" });
+  }
+});
 app.get("/api/view-content/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
