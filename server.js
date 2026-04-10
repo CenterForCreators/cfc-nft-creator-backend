@@ -401,21 +401,7 @@ res.send(html);
   res.status(500).send("Failed to load content");
 }
 });
-app.get("/api/metadata/:cid", async (req, res) => {
-  try {
-    const cid = req.params.cid;
 
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${cid}`,
-      { timeout: 5000 }
-    );
-
-    res.json(r.data);
-  } catch (e) {
-    console.error("metadata proxy error:", e);
-    res.status(500).json({ error: "Failed to load metadata" });
-  }
-});
 // -------------------------------
 // SUBMIT NFT
 // -------------------------------
@@ -442,25 +428,6 @@ const {
     // Ensure reader always has a valid content reference
 if (contentCid) {
   metadataJSON.content_html = contentCid;
-}
-// -------------------------------
-// 🔑 GENERATE content_html FROM Word DOC (REQUIRED)
-// -------------------------------
-if (contentCid) {
-  try {
-    const r = await axios.get(
-      `https://gateway.pinata.cloud/ipfs/${contentCid}`,
-      { responseType: "arraybuffer" }
-    );
-
-    const result = await mammoth.convertToHtml({ buffer: r.data });
-
-    // Save HTML directly into metadata
-  
-
-  } catch (e) {
-    console.error("Failed to generate content_html:", e);
-  }
 }
 
 // -------------------------------
