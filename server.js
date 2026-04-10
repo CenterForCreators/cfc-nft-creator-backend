@@ -351,9 +351,15 @@ app.get("/api/view-content/:cid", async (req, res) => {
     // Convert Word → HTML here (THIS is the key)
     const result = await mammoth.convertToHtml({ buffer: r.data });
 
-    res.setHeader("Content-Type", "text/html");
-    res.send(result.value);
+   let html = result.value;
 
+html = html.replace(
+  /<p>\s*(Chapter\s+\d+.*?)<\/p>/gi,
+  "<h1>$1</h1>"
+);
+
+res.setHeader("Content-Type", "text/html");
+res.send(html);
   } catch (e) {
     console.error(e);
     res.status(500).send("Failed to load content");
@@ -380,14 +386,16 @@ app.get("/api/content-html/by-submission/:id", async (req, res) => {
 
     // Convert Word → HTML
     const result = await mammoth.convertToHtml({ buffer: raw.data });
+let html = result.value;
 
-    res.setHeader("Content-Type", "text/html");
-    res.send(result.value);
-  } catch (e) {
-    console.error("content-html/by-submission error:", e);
-    res.status(500).send("Failed to load content");
-  }
-});
+html = html.replace(
+  /<p>\s*(Chapter\s+\d+.*?)<\/p>/gi,
+  "<h1>$1</h1>"
+);
+
+res.setHeader("Content-Type", "text/html");
+res.send(html);  
+   });
 app.get("/api/metadata/:cid", async (req, res) => {
   try {
     const cid = req.params.cid;
