@@ -451,7 +451,7 @@ if (contentCid) {
     const result = await mammoth.convertToHtml({ buffer: r.data });
 
     // Save HTML directly into metadata
-    metadataJSON.content_html = result.value;
+  
 
   } catch (e) {
     console.error("Failed to generate content_html:", e);
