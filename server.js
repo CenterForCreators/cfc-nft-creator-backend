@@ -467,15 +467,22 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
      VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id
       `,
-      [
-       wallet, name, description, imageCid || req.body.image_cid, metadataCid, quantity,
-new Date().toISOString(),
-metadataJSON.terms || null,
-metadataJSON.price_xrp || null,
-metadataJSON.price_rlusd || null,
-email, website,
-content_cid, category, metadata_json)
-      ]
+    [
+  wallet,
+  name,
+  description,
+  imageCid || req.body.image_cid,
+  metadataCid,
+  quantity,
+  new Date().toISOString(),
+  metadataJSON.terms || null,
+  metadataJSON.price_xrp || null,
+  metadataJSON.price_rlusd || null,
+  email,
+  website,
+  contentCid,
+  category
+]
     );
 await sendAdminSubmissionEmail({
   name,
