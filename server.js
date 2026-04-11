@@ -995,6 +995,23 @@ app.get("/api/submission/:id", async (req, res) => {
     res.status(500).json({ error: "Failed to load submission" });
   }
 });
+app.get("/api/ipfs/:cid", async (req, res) => {
+  try {
+    const cid = String(req.params.cid || "").replace("ipfs://", "").replace("ipfs/", "");
+    const r = await axios.get(`https://gateway.pinata.cloud/ipfs/${cid}`, {
+      responseType: "stream",
+      timeout: 15000
+    });
+
+    if (r.headers["content-type"]) {
+      res.setHeader("Content-Type", r.headers["content-type"]);
+    }
+    r.data.pipe(res);
+  } catch (e) {
+    console.error("ipfs image proxy error:", e.response?.data || e.message);
+    res.status(500).send("Failed to load IPFS asset");
+  }
+});
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
