@@ -444,7 +444,10 @@ const {
   category
 } = req.body;
   
-    const metadataJSON = JSON.parse(req.body.metadata || "{}");
+  const metadataJSON =
+  typeof req.body.metadata === "string"
+    ? JSON.parse(req.body.metadata || "{}")
+    : (req.body.metadata || {});
     // Ensure reader always has a valid content reference
 if (contentCid) {
   metadataJSON.content_html = contentCid;
