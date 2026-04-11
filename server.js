@@ -462,9 +462,9 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
      INSERT INTO submissions
 (creator_wallet, name, description, image_cid, metadata_cid, batch_qty,
  status, payment_status, mint_status, created_at,
- terms, price_xrp, price_rlusd, email, website, content_cid, category)
+ terms, price_xrp, price_rlusd, email, website, content_cid, category, metadata_json)
 
-     VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13,$14)
+    VALUES ($1,$2,$3,$4,$5,$6,'pending','unpaid','pending',$7,$8,$9,$10,$11,$12,$13,$14,$15) 
       RETURNING id
       `,
     [
@@ -481,7 +481,8 @@ if (metadataJSON.learn && typeof metadataJSON.learn !== "object") {
   email,
   website,
   contentCid,
-  category
+  category,
+  JSON.stringify(metadataJSON)
 ]
     );
 await sendAdminSubmissionEmail({
