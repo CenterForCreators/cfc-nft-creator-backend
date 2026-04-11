@@ -974,7 +974,24 @@ app.post("/api/xaman/webhook", async (req, res) => {
     client.release();
   }
 });
+app.get("/api/submission/:id", async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT metadata_json FROM submissions WHERE id=$1",
+      [req.params.id]
+    );
 
+    if (!r.rows.length) {
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    res.json(r.rows[0]);
+
+  } catch (e) {
+    console.error("submission fetch error:", e);
+    res.status(500).json({ error: "Failed to load submission" });
+  }
+});
 app.listen(PORT, () => {
   console.log("CFC NFT Creator Backend running on", PORT);
 });
