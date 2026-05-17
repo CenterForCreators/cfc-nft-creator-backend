@@ -540,6 +540,47 @@ app.get("/api/admin/submissions", async (req, res) => {
   const rows = await pool.query("SELECT * FROM submissions ORDER BY id DESC");
   res.json(rows.rows);
 });
+app.get("/api/submissions/by-wallet/:wallet", async (req, res) => {
+  try {
+
+    const wallet = req.params.wallet;
+
+    if (!wallet) {
+      return res.status(400).json({ error: "Missing wallet" });
+    }
+
+    const rows = await pool.query(
+      `
+      SELECT
+        id,
+        name,
+        description,
+        image_cid,
+        status,
+        payment_status,
+        mint_status,
+        created_at,
+        rejection_reason,
+        nftoken_id,
+        nftoken_ids,
+        category,
+        price_xrp,
+        price_rlusd,
+        is_delisted
+      FROM submissions
+      WHERE creator_wallet=$1
+      ORDER BY id DESC
+      `,
+      [wallet]
+    );
+
+    res.json(rows.rows);
+
+  } catch (e) {
+    console.error("wallet submissions error:", e);
+    res.status(500).json({ error: "Failed to load submissions" });
+  }
+});
 // -------------------------------
 // LEARN-TO-EARN ADMIN ACTIVITY (READ-ONLY)
 // -------------------------------
