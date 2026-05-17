@@ -565,7 +565,7 @@ app.get("/api/submissions/by-wallet/:wallet", async (req, res) => {
         nftoken_ids,
         category,
         price_xrp,
-        price_rlusd,
+        price_rlusd
       FROM submissions
       WHERE creator_wallet=$1
       ORDER BY id DESC
