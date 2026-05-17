@@ -566,7 +566,6 @@ app.get("/api/submissions/by-wallet/:wallet", async (req, res) => {
         category,
         price_xrp,
         price_rlusd,
-        is_delisted
       FROM submissions
       WHERE creator_wallet=$1
       ORDER BY id DESC
